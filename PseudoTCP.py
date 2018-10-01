@@ -60,8 +60,10 @@ class PseudoTCPNode:
             # If a packet was received and it contains SYN-ACK, continue
             if syn_ack and self._are_flags_set(syn_ack, self.HEADER_SYN, self.HEADER_ACK, self.HEADER_ACK_BIT)\
                     and self._are_flags_unset(syn_ack, self.HEADER_FIN, self.HEADER_FRAME_BIT):
-                print("Timeout! (or the packet received was incorrect) Trying again...")
                 break
+
+            # Otherwise try again
+            print("Timeout! (or the packet received was incorrect) Trying again...")
 
         # Send ACK
         ack_message = bytearray(2)
