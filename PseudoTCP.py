@@ -5,7 +5,7 @@ class PseudoTCPNode:
     HEADER_SIZE = 1
     PAYLOAD_SIZE = 1
     PACKET_SIZE = HEADER_SIZE + PAYLOAD_SIZE
-    SOCKET_TIMEOUT = .50
+    SOCKET_TIMEOUT = 3
     HEADER_SYN = 0x01
     HEADER_ACK = 0x02
     HEADER_FIN = 0x04
@@ -21,14 +21,14 @@ class PseudoTCPNode:
     def _are_flags_set(header, *flags):
         are_set = True
         for flag in list(flags):
-            are_set = are_set and (flag & header != 0)
+            are_set = are_set and (flag & header) != 0
         return are_set
 
     @staticmethod
     def _are_flags_unset(header, *flags):
         are_unset = True
         for flag in list(flags):
-            are_unset = are_unset and (flag & header == 0)
+            are_unset = are_unset and int((int(flag) & int(header)) == 0)
         return are_unset
 
     def bind(self, address):
@@ -81,24 +81,32 @@ class PseudoTCPNode:
 
         while True:
             # Send SYN
-            print("Sending SYN...")
+            print(f"Sending SYN {syn_message} to {address}")
             new_socket.sendall(syn_message)
 
             # Wait for SYN-ACK
-            syn_ack = new_socket.recv(PseudoTCPNode.HEADER_SIZE)
+            try:
+                received_message, incoming_address = new_socket.recvfrom(PseudoTCPNode.PACKET_SIZE)
+            except socket.timeout:
+                print("Timeout! Trying again...")
+                continue
+
+            syn_ack_header = received_message[0]
+            print(f"Received {bin(syn_ack_header)} from {incoming_address}!")
 
             # If a packet was received and it contains SYN-ACK, continue
-            if syn_ack and self._are_flags_set(syn_ack, self.HEADER_SYN, self.HEADER_ACK, self.HEADER_ACK_BIT)\
-                    and self._are_flags_unset(syn_ack, self.HEADER_FIN, self.HEADER_FRAME_BIT):
+            if syn_ack_header and self._are_flags_set(syn_ack_header, self.HEADER_SYN, self.HEADER_ACK, self.HEADER_ACK_BIT)\
+                    and self._are_flags_unset(syn_ack_header, self.HEADER_FIN, self.HEADER_FRAME_BIT):
                 break
 
             # Otherwise try again
-            print("Timeout! (or the packet received was incorrect) Trying again...")
+            print("The packet received was incorrect! Trying again...")
 
         # Send ACK
         ack_message = bytearray(2)
         ack_message[0] = self.HEADER_ACK | self.HEADER_FRAME_BIT
-        new_socket.sendall(PseudoTCPNode.HEADER_ACK)
+        print(f"Sending {ack_message}")
+        new_socket.sendall(ack_message)
 
     def send(self):
         pass
