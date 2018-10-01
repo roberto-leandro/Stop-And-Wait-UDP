@@ -14,7 +14,7 @@ class PseudoTCPNode:
 
     def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.settimeout(PseudoTCPNode.SOCKET_TIMEOUT)
+        #self.sock.settimeout(PseudoTCPNode.SOCKET_TIMEOUT)
         self.connection = None
 
     @staticmethod
@@ -36,30 +36,38 @@ class PseudoTCPNode:
 
     def accept(self):
         while True:
-            received_message = None
-            while received_message == None:
-                received_message, address = self.sock.recvfrom(self.PACKET_SIZE)
+            received_message, address = self.sock.recvfrom(self.PACKET_SIZE)
+            bits = [bin(x) for x in received_message]
+            print(f"received {bits} from {address}")
 
             header = received_message[0]
-            frame_bit = header | self.HEADER_FRAME_BIT
+            #frame_bit = header | self.HEADER_FRAME_BIT
             is_syn = self._are_flags_set(header, self.HEADER_SYN) and \
                      self._are_flags_unset(header, self.HEADER_FIN | self.HEADER_ACK)
             if not is_syn:
+                print("did not receive SYN, retrying")
                 continue
 
+            print("SYN received")
             message = bytearray(2)
-            message[0] = message[0] | self.HEADER_ACK | self.HEADER_SYN | frame_bit
-            self.sock.send(message)
+            message[0] = self.HEADER_ACK | self.HEADER_SYN | self.HEADER_ACK_BIT
+            print(f"HEADER {bin(message[0])}")
+            bits = [bin(x) for x in message]
+            print(f"sending {bits} to {address}")
+            self.sock.sendto(message, address)
 
-            new_received_message = None
-            while new_received_message == None:
-                new_received_message, address = self.sock.recv(self.PACKET_SIZE)
+            new_received_message, address = self.sock.recvfrom(self.PACKET_SIZE)
+            bits = [bin(x) for x in new_received_message]
+            print(f"received new message {bits} from {address}")
 
             new_header = new_received_message[0]
-            is_ack = self._are_flags_set(header, self.HEADER_ACK) and \
-                     self._are_flags_unset(header, self.HEADER_FIN, self.HEADER_SYN)
+            is_ack = self._are_flags_set(new_header, self.HEADER_ACK) and \
+                     self._are_flags_unset(new_header, self.HEADER_FIN, self.HEADER_SYN)
             self.connection = address
-            break
+            if is_ack:
+                print("ACK received")
+                break
+            print("Did not receive ACK, retrying")
 
     def connect(self):
         pass
@@ -102,3 +110,7 @@ class PseudoTCPNode:
 
     def send(self):
         pass
+
+node = PseudoTCPNode()
+node.bind(("0.0.0.0", 65000))
+node.accept()
