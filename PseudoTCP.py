@@ -1,7 +1,6 @@
 import socket
 import struct
 
-
 class PseudoTCPNode:
     HEADER_SIZE = 1
     PAYLOAD_SIZE = 1
@@ -11,11 +10,12 @@ class PseudoTCPNode:
     HEADER_ACK = 0x02
     HEADER_FIN = 0x04
     HEADER_FRAME_BIT = 0x08
-    HEADER_ACK_BIT = 0x010
+    HEADER_ACK_BIT = 0x10
 
     def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(PseudoTCPNode.SOCKET_TIMEOUT)
+        self.connection = None
 
     @staticmethod
     def _are_flags_set(header, *flags):
@@ -33,6 +33,36 @@ class PseudoTCPNode:
 
     def bind(self, address):
         self.sock.bind(address)
+
+    def accept(self):
+        while True:
+            received_message = None
+            while received_message == None:
+                received_message, address = self.sock.recvfrom(self.PACKET_SIZE)
+
+            header = received_message[0]
+            frame_bit = header | self.HEADER_FRAME_BIT
+            is_syn = self._are_flags_set(header, self.HEADER_SYN) and \
+                     self._are_flags_unset(header, self.HEADER_FIN | self.HEADER_ACK)
+            if not is_syn:
+                continue
+
+            message = bytearray(2)
+            message[0] = message[0] | self.HEADER_ACK | self.HEADER_SYN | frame_bit
+            self.sock.send(message)
+
+            new_received_message = None
+            while new_received_message == None:
+                new_received_message, address = self.sock.recv(self.PACKET_SIZE)
+
+            new_header = new_received_message[0]
+            is_ack = self._are_flags_set(header, self.HEADER_ACK) and \
+                     self._are_flags_unset(header, self.HEADER_FIN, self.HEADER_SYN)
+            self.connection = address
+            break
+
+    def connect(self):
+        pass
 
     def recv(self):
         pass
