@@ -26,6 +26,7 @@ class PseudoTCPNode:
     def connect(self, address):
         # Instantiate a socket to send the data
         new_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        new_socket.settimeout(self.SOCKET_TIMEOUT)
 
         while True:
             # Send SYN
