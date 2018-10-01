@@ -7,8 +7,8 @@ class PseudoTCPNode:
     def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    def bind(self):
-        pass
+    def bind(self, address):
+        self.sock.bind(address)
 
     def accept(self):
         pass
