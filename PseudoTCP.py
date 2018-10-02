@@ -19,17 +19,17 @@ class PseudoTCPNode:
 
     @staticmethod
     def _are_flags_set(header, *flags):
-        are_set = True
         for flag in list(flags):
-            are_set = are_set and (flag & header) != 0
-        return are_set
+            if (flag & header) == 0:
+                return False
+        return True
 
     @staticmethod
     def _are_flags_unset(header, *flags):
-        are_unset = True
         for flag in list(flags):
-            are_unset = are_unset and int((int(flag) & int(header)) == 0)
-        return are_unset
+            if (flag & header) != 0:
+                return False
+        return True
 
     def bind(self, address):
         self.sock.bind(address)
