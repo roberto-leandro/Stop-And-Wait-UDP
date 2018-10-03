@@ -14,7 +14,7 @@ class PseudoTCPNode:
 
     def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        #self.sock.settimeout(PseudoTCPNode.SOCKET_TIMEOUT)
+        self.sock.settimeout(PseudoTCPNode.SOCKET_TIMEOUT)
         self.connection = None
 
     @staticmethod
@@ -36,12 +36,14 @@ class PseudoTCPNode:
 
     def accept(self):
         while True:
-            received_message, address = self.sock.recvfrom(self.PACKET_SIZE)
+            try:
+                received_message, address = self.sock.recvfrom(self.PACKET_SIZE)
+            except socket.timeout:
+                continue
             bits = [bin(x) for x in received_message]
             print(f"received {bits} from {address}")
 
             header = received_message[0]
-            #frame_bit = header | self.HEADER_FRAME_BIT
             is_syn = self._are_flags_set(header, self.HEADER_SYN) and \
                      self._are_flags_unset(header, self.HEADER_FIN | self.HEADER_ACK)
             if not is_syn:
@@ -56,7 +58,11 @@ class PseudoTCPNode:
             print(f"sending {bits} to {address}")
             self.sock.sendto(message, address)
 
-            new_received_message, address = self.sock.recvfrom(self.PACKET_SIZE)
+            try:
+                new_received_message, address = self.sock.recvfrom(self.PACKET_SIZE)
+            except socket.timeout:
+                print("Timeout waiting for ACK")
+                continue
             bits = [bin(x) for x in new_received_message]
             print(f"received new message {bits} from {address}")
 
@@ -68,12 +74,6 @@ class PseudoTCPNode:
                 print("ACK received")
                 break
             print("Did not receive ACK, retrying")
-
-    def connect(self):
-        pass
-
-    def recv(self):
-        pass
 
     def connect(self, address):
         print(f"Trying to connect to {address}...")
@@ -118,6 +118,10 @@ class PseudoTCPNode:
 
     def send(self):
         pass
+
+    def recv(self):
+        pass
+
 
 node = PseudoTCPNode()
 node.bind(("0.0.0.0", 65000))
