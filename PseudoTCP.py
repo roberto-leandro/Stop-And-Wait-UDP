@@ -1,5 +1,5 @@
 import socket
-import struct
+
 
 class PseudoTCPNode:
     HEADER_SIZE = 1
@@ -125,11 +125,11 @@ class PseudoTCPNode:
             packet = bytearray(self.PACKET_SIZE)
             header = self.HEADER_FRAME_BIT if frame_bit else 0
             packet[0] = header
-            packet[1] = message[bytes_send]
+            packet[self.HEADER_SIZE:] = message[bytes_send:self.PAYLOAD_SIZE:]
             self.sock.send(packet)
 
             try:
-                maybe_ack_message = self.sock.recv(2)
+                maybe_ack_message = self.sock.recv(self.PACKET_SIZE)
             except socket.timeout:
                 print("Timed out waiting for ACK")
                 continue
@@ -150,11 +150,43 @@ class PseudoTCPNode:
                 print("Packet received has incorrect ACK bit, possible duplicate")
                 continue
 
-            bytes_send += 1
+            bytes_send += self.PAYLOAD_SIZE
             frame_bit = not frame_bit
 
-    def recv(self):
-        raise NotImplementedError
+    def recv(self, size):
+        message = bytearray(size)
+        received_bytes = 0
+        last_frame_bit = None
+        while received_bytes < size:
+            # Receive packet
+            try:
+                rec_packet = self.sock.recv(self.PACKET_SIZE)
+            except socket.timeout:
+                print("Timed out waiting for packet")
+                continue
+            header = rec_packet[0]
+            rec_frame_bit = (header | self.HEADER_FRAME_BIT) != 0
+
+            # Check if packet is duplicate
+            if last_frame_bit is not None:
+                last_frame_bit = rec_frame_bit
+            elif last_frame_bit == rec_frame_bit:
+                # ACK and ignore dup packet
+                dup_ack = bytearray(2)
+                frame_bit = 0 if last_frame_bit else self.HEADER_FRAME_BIT
+                dup_ack[0] = self.HEADER_ACK | frame_bit
+                self.sock.send(dup_ack)
+                continue
+
+            # Save the payload into the message
+            message[received_bytes:self.PAYLOAD_SIZE:] = rec_packet[self.HEADER_SIZE:]
+
+            # ACK the sender
+            ack_message = bytearray(2)
+            frame_bit = 0 if last_frame_bit else self.HEADER_FRAME_BIT
+            ack_message[0] = self.HEADER_ACK | frame_bit
+            self.sock.send(ack_message)
+            received_bytes += self.PAYLOAD_SIZE
 
     def close(self):
         raise NotImplementedError
