@@ -1,32 +1,35 @@
 import socket
 import random
-import struct
+import queue
+import threading
 
 
 class PseudoTCPSocket:
     HEADER_SIZE = 1
-    PAYLOAD_SIZE = 2
+    PAYLOAD_SIZE = 1
     PACKET_SIZE = HEADER_SIZE + PAYLOAD_SIZE
     SOCKET_TIMEOUT = 3
-    HEADER_SYN =       0b0000000010000000
-    HEADER_ACK =       0b0000000001000000
-    HEADER_FIN =       0b0000000000100000
-    HEADER_SN =        0b0000000000010000
-    HEADER_RN =        0b0000000000001000
-    HEADER_DATA_LEFT = 0b0000000000000111
+    HEADER_SYN = 0b0000000010000000
+    HEADER_ACK = 0b0000000001000000
+    HEADER_FIN = 0b0000000000100000
+    HEADER_SN = 0b0000000000010000
+    HEADER_RN = 0b0000000000001000
+    HEADER_MESSAGE_END = 0b0000000000000100
 
     def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.settimeout(PseudoTCPSocket.SOCKET_TIMEOUT)
         self.current_partner = None
+        self.current_partner_lock = threading.Lock()
         self.current_status = 'CLOSED'
         self.current_sn = False
         self.current_rn = False
-
+        self.send_queue = queue.Queue()
+        self.receive_queue = queue.Queue()
+        self.payload_queue = queue.Queue()
 
     @staticmethod
     def _packet_to_string(packet):
-        return bin(int.from_bytes(packet, byteorder='big', signed=False))
+        return bin(int.from_bytes(packet, byteorder='little', signed=False))
 
     @staticmethod
     def _are_flags_set(header, *flags):
@@ -54,24 +57,25 @@ class PseudoTCPSocket:
             return False
         return True
 
-    def _create_packet(self, syn=False, ack=False, fin=False, sn=False, rn=False, data_left=0, payload=bytearray(1)):
-        packet = bytearray(2)
+    @staticmethod
+    def _create_packet(syn=False, ack=False, fin=False, sn=False, rn=False, data_left=0, payload=bytearray(1)):
+        packet = bytearray(PseudoTCPSocket.PACKET_SIZE)
 
         # Set flags
         if syn:
-            packet[0] = packet[0] | self.HEADER_SYN
+            packet[0] = packet[0] | PseudoTCPSocket.HEADER_SYN
         if ack:
-            packet[0] = packet[0] | self.HEADER_ACK
+            packet[0] = packet[0] | PseudoTCPSocket.HEADER_ACK
         if fin:
-            packet[0] = packet[0] | self.HEADER_FIN
+            packet[0] = packet[0] | PseudoTCPSocket.HEADER_FIN
         if sn:
-            packet[0] = packet[0] | self.HEADER_SN
+            packet[0] = packet[0] | PseudoTCPSocket.HEADER_SN
         if rn:
-            packet[0] = packet[0] | self.HEADER_RN
+            packet[0] = packet[0] | PseudoTCPSocket.HEADER_RN
 
         # Add data left and payload
         packet[0] = packet[0] | data_left
-        packet[1] = int.from_bytes(payload, byteorder='big', signed=False)
+        packet[PseudoTCPSocket.PAYLOAD_SIZE:] = payload
         return packet
 
     def bind(self, address):
@@ -101,7 +105,9 @@ class PseudoTCPSocket:
 
         # Set the state variables to synchronize with the partner
         self.current_status = 'SYN RECEIVED'
+        self.current_partner_lock.acquire()
         self.current_partner = address
+        self.current_partner_lock.release()
         self.current_rn = not self._get_sn(header)
         self.current_sn = random.choice([True, False])
 
@@ -130,6 +136,7 @@ class PseudoTCPSocket:
             # Check if the packet contains ACK and has a correct rn (different from current sn)
             new_header = new_received_message[0]
             is_ack = self._are_flags_set(new_header, self.HEADER_ACK) \
+                     and self._get_sn(new_header) == self.current_rn \
                      and self._get_rn(new_header) != self.current_sn \
                      and self._are_flags_unset(new_header, self.HEADER_FIN, self.HEADER_SYN)
 
@@ -139,24 +146,21 @@ class PseudoTCPSocket:
         print("Message received was a proper ACK!")
         # Update current variables: connection is now established, sn and rn should be flipped
         self.current_status = "ESTABLISHED"
-        self.current_sn = not self.current_sn
+        self.current_sn = self._get_rn(new_header)
         self.current_rn = not self._get_sn(new_header)
-
-        self.sock.connect(address)
+        self.start_permanent_loops()
 
     def connect(self, address):
         # Change localhost to 127.0.0.1 from now so the address can be written as the current partner
         if address[0] == 'localhost':
             address = ('127.0.0.1', address[1])
 
+        self.current_partner_lock.acquire()
         self.current_partner = address
+        self.current_partner_lock.release()
         self.current_status = "CLOSED"
+        self.sock.connect(address)
         print(f"Trying to connect to {address}...")
-
-        # Instantiate a socket to send the data
-        new_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        new_socket.settimeout(self.SOCKET_TIMEOUT)
-        new_socket.connect(address)
 
         # Build the SYN message, choosing a random value for sn
         self.current_sn = random.choice([True, False])
@@ -165,12 +169,12 @@ class PseudoTCPSocket:
         while True:
             # Send SYN
             print(f"Sending SYN {self._packet_to_string(syn_message)} to {address}")
-            new_socket.sendall(syn_message)
+            self.sock.sendall(syn_message)
             self.current_status = "SYN SENT"
 
             # Wait for SYN-ACK
             try:
-                received_message, incoming_address = new_socket.recvfrom(PseudoTCPSocket.PACKET_SIZE)
+                received_message, incoming_address = self.sock.recvfrom(PseudoTCPSocket.PACKET_SIZE)
             except socket.timeout:
                 print("Timeout! Trying again...")
                 continue
@@ -184,7 +188,7 @@ class PseudoTCPSocket:
                 continue
 
             # Check if the packet contains SYN-ACK and has a correct rn (different from current sn)
-            if syn_ack_header and self._are_flags_set(syn_ack_header, self.HEADER_SYN, self.HEADER_ACK)\
+            if syn_ack_header and self._are_flags_set(syn_ack_header, self.HEADER_SYN, self.HEADER_ACK) \
                     and self._get_rn(syn_ack_header) != self.current_sn \
                     and self._are_flags_unset(syn_ack_header, self.HEADER_FIN):
                 break
@@ -195,86 +199,91 @@ class PseudoTCPSocket:
         print("The packet received contained a correct SYN-ACK!")
         # Update current variables: connection is now established, sn and rn should be flipped
         self.current_status = "ESTABLISHED"
-        self.current_sn = not self.current_sn
+        self.current_sn = self._get_rn(syn_ack_header)
         self.current_rn = not self._get_sn(syn_ack_header)
 
         # Send ACK
         ack_message = self._create_packet(ack=True, sn=self.current_sn, rn=self.current_rn)
         print(f"Sending ACK {self._packet_to_string(ack_message)}")
-        new_socket.sendall(ack_message)
+        self.sock.sendall(ack_message)
+        self.start_permanent_loops()
+
+    def start_permanent_loops(self):
+        main_looper = threading.Thread(target=self.main_loop)
+        reader = threading.Thread(target=self.read_loop)
+        main_looper.start()
+        reader.start()
+        print("Loops started!")
+
+    def read_loop(self):
+        """Puts packets in the receive queue"""
+        while True:
+            try:
+                packet, address = self.sock.recvfrom(self.PACKET_SIZE)
+            except socket.timeout:
+                continue
+            if address == self.current_partner:
+                self.receive_queue.put(packet, block=True)
+
+
+    def main_loop(self):
+        """This loop will handle the three main events: receiving data from an upper layer, receiving an ack, or a timeout"""
+        while True:
+            if not self.receive_queue.empty():
+                is_valid = False
+                packet = self.receive_queue.get(block=True)
+
+                # Process the packet, determine if its valid and if an ACK should be sent
+                print(f"Got new packet {self._packet_to_string(packet)}")
+                header = packet[0]
+
+                # Check if packet contains new data
+                if self._get_sn(header) == self.current_rn:
+                    is_valid = True
+                    print("Packet contains new data!")
+
+                    # Put the payload in the proccessed messages queue
+                    self.payload_queue.put(packet[self.HEADER_SIZE:])
+
+                    # Increase rn
+                    self.current_rn = not self.current_rn
+
+                    # ACK the sender
+                    ack_message = self._create_packet(ack=True, sn=self.current_sn, rn=self.current_rn)
+                    print(f"Sending ACK {self._packet_to_string(ack_message)}")
+                    self.sock.sendto(ack_message, self.current_partner)
+
+                # Check if packet contains an ACK
+                if self._are_flags_set(header, self.HEADER_ACK) and self._get_rn(header) != self.current_sn:
+                    is_valid = True
+                    print("Packet contains an ACK!")
+                    self.current_sn = self._get_rn(header)
+
+                    # Send next packet
+                    self.sock.sendto(self.send_queue.get(block=True), self.current_partner)
+
+                if not is_valid:
+                    print("Packet did not contain anything useful...")
 
     def send(self, message):
-        frame_bit = True
-        bytes_send = 0
+        bytes_sent = 0
 
-        while bytes_send < len(message):
-            # Make a packet and send to "connected" socket
-            # TODO(Carlos): abstract the packet construction
-            packet = bytearray(self.PACKET_SIZE)
-            header = self.HEADER_SN if frame_bit else 0
-            packet[0] = header
-            packet[self.HEADER_SIZE:] = message[bytes_send:self.PAYLOAD_SIZE:]
-            self.sock.send(packet)
-
-            try:
-                maybe_ack_message = self.sock.recv(self.PACKET_SIZE)
-            except socket.timeout:
-                print("Timed out waiting for ACK, sending packet again.")
-                continue
-
-            # Check if ack and ack bit is correct
-            # TODO(Carlos): refactor into a macro
-            # TODO(Carlos): check for other flags
-            maybe_ack_header = maybe_ack_message[0]
-            is_ack = self._are_flags_set(maybe_ack_header, self.HEADER_ACK)
-            expected_ack_bit = self.HEADER_RN if not frame_bit else 0
-            is_ack_bit_correct = (maybe_ack_header | self.HEADER_RN) == expected_ack_bit
-            if not is_ack:
-                # FIXME(Carlos): In a true full duplex this shouldn't happen
-                print("Packet received is not ACK, resending packet.")
-                continue
-            if not is_ack_bit_correct:
-                # FIXME(Carlos): In this case we should wait for other packet or timeout, not resend instantly
-                print("Packet received has incorrect ACK bit, possible duplicate.")
-                continue
-
-            bytes_send += self.PAYLOAD_SIZE
-            frame_bit = not frame_bit
+        while bytes_sent < len(message):
+            packet = self._create_packet(sn=self.current_sn, rn=self.current_rn,
+                                         payload=message[bytes_sent:bytes_sent + self.PAYLOAD_SIZE])
+            self.send_queue.put(packet, block=True)
+            bytes_sent += self.PAYLOAD_SIZE
+        self.sock.sendto(self.send_queue.get(block=True), self.current_partner)
 
     def recv(self, size):
+        """Read from the processed message queue"""
         message = bytearray(size)
         received_bytes = 0
-        last_frame_bit = None
+        self.current_sn = not self.current_sn
         while received_bytes < size:
-            # Receive packet
-            try:
-                rec_packet = self.sock.recv(self.PACKET_SIZE)
-            except socket.timeout:
-                print("Timed out waiting for packet")
-                continue
-            header = rec_packet[0]
-            rec_frame_bit = (header | self.HEADER_SN) != 0
-
-            # Check if packet is duplicate
-            if last_frame_bit is not None:
-                last_frame_bit = rec_frame_bit
-            elif last_frame_bit == rec_frame_bit:
-                # ACK and ignore dup packet
-                dup_ack = bytearray(2)
-                frame_bit = 0 if last_frame_bit else self.HEADER_SN
-                dup_ack[0] = self.HEADER_ACK | frame_bit
-                self.sock.send(dup_ack)
-                continue
-
-            # Save the payload into the message
-            message[received_bytes:self.PAYLOAD_SIZE:] = rec_packet[self.HEADER_SIZE:]
-
-            # ACK the sender
-            ack_message = bytearray(2)
-            frame_bit = 0 if last_frame_bit else self.HEADER_SN
-            ack_message[0] = self.HEADER_ACK | frame_bit
-            self.sock.send(ack_message)
+            message[received_bytes:self.PAYLOAD_SIZE:] = self.payload_queue.get(block=True)
             received_bytes += self.PAYLOAD_SIZE
+        return message
 
     def close(self):
         raise NotImplementedError
