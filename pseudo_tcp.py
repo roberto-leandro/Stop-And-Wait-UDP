@@ -145,8 +145,12 @@ class PseudoTCPSocket:
         self.sock.connect(address)
 
     def connect(self, address):
-        self.current_status = "CLOSED"
+        # Change localhost to 127.0.0.1 from now so the address can be written as the current partner
+        if address[0] == 'localhost':
+            address = ('127.0.0.1', address[1])
+
         self.current_partner = address
+        self.current_status = "CLOSED"
         print(f"Trying to connect to {address}...")
 
         # Instantiate a socket to send the data
