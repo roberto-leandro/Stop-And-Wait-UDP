@@ -56,7 +56,7 @@ class AcceptStatus(State):
         # Set the state variables to synchronize with the partner
         node.set_current_status(SynReceivedStatus())
         node.set_current_partner(origin_address)
-        node.flip_current_rn()
+        node.set_current_rn(not utility.get_sn(header))
         node.set_current_sn(random.choice([True, False]))
 
         # Send SYN-ACK
@@ -111,7 +111,7 @@ class SynSentStatus(State):
 
         print("Message received was a proper SYN-ACK, connection established!")
         # Update current variables: connection is now established, sn and rn should be flipped
-        node._set_current_status(EstablishedStatus())
+        node.set_current_status(EstablishedStatus())
         node.set_current_sn(utility.get_rn(header))
         node.set_current_rn(not utility.get_sn(header))
 
