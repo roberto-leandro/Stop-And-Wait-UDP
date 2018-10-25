@@ -10,6 +10,8 @@ class PseudoTCPSocket:
 
     # TODO add getters and setters for this class' variables to be used in the states module
     # TODO create a utility method to always send socket messages to the current partner
+    # TODO handshake does not happen properly, sometimes the node thinks it's receiving data when receiving an ACK, or viceversa
+    # TODO the message does not start being sent when send() is called, instead it starts after a timeout
     # The getters and setters should encapsulate the acquiring and releasing of locks for queues, current_partner, etc
     def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
