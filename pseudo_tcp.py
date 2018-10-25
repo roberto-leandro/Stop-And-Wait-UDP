@@ -104,8 +104,9 @@ class PseudoTCPSocket:
             self.send_queue.put(packet, block=True)
             bytes_sent += utility.PAYLOAD_SIZE
 
+    #TODO modify implementation to read the data remaining from the packet's headers
     def recv(self, size):
-        """Read from the processed message queue"""
+        """Read from the processed message queue until data_left is 0"""
         message = bytearray(size)
         received_bytes = 0
         self.current_sn = not self.current_sn
