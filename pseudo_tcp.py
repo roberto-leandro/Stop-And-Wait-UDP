@@ -8,52 +8,57 @@ import utility
 
 class PseudoTCPSocket:
 
-    # TODO add getters and setters for this class' variables to be used in the states module
-    # TODO create a utility method to always send socket messages to the current partner
     # TODO handshake does not happen properly, sometimes the node thinks it's receiving data when receiving an ACK, or viceversa
     # TODO the message does not start being sent when send() is called, instead it starts after a timeout
-    # The getters and setters should encapsulate the acquiring and releasing of locks for queues, current_partner, etc
+    # TODO create a method to peek from the queue, as the packets should not be removed in case they need to be retransmitted
     def __init__(self):
+        # Socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.current_partner = None
-        self.current_partner_lock = threading.Lock()
+        
+        # State variables
         self.current_status = states.ClosedStatus()
         self.current_sn = False
         self.current_rn = False
+        self.current_partner = None
+        
+        # Queues 
         self.send_queue = queue.Queue()
         self.receive_queue = queue.Queue()
         self.payload_queue = queue.Queue()
+        
+        # Locks
+        self.sock_lock = threading.Lock()
+        self.current_partner_lock = threading.Lock()
+        self.current_status_lock = threading.Lock()
+        self.current_sn_lock = threading.Lock()
+        self.current_rn_lock = threading.Lock()
 
     def bind(self, address):
         self.sock.bind(address)
         self.start_permanent_loops()
 
     def accept(self):
-        self.current_partner_lock.acquire()
-        self.current_partner = None
-        self.current_partner_lock.release()
         print("Waiting for incoming connections...")
-        self.current_status = states.AcceptStatus
+        self.set_current_partner(None)
+        self.set_current_status(states.AcceptStatus())
 
     def connect(self, address):
         # Change localhost to 127.0.0.1 from now so the address can be written as the current partner
         if address[0] == 'localhost':
             address = ('127.0.0.1', address[1])
 
-        self.current_partner_lock.acquire()
-        self.current_partner = address
-        self.current_partner_lock.release()
-        self.current_status = states.ClosedStatus
+        self.set_current_partner(address)
+        self.set_current_status(states.ClosedStatus())
         self.sock.connect(address)
         print(f"Trying to connect to {address}...")
 
         # Build the SYN message, choosing a random value for sn
-        self.current_sn = random.choice([True, False])
-        syn_message = utility.create_packet(syn=True, sn=self.current_sn)
+        self.set_current_sn(random.choice([True, False]))
+        syn_message = utility.create_packet(syn=True, sn=self.get_current_sn())
         # Send SYN
         print(f"Sending SYN {utility.packet_to_string(syn_message)} to {address}")
-        self.sock.sendall(syn_message)
-        self.current_status = states.SynSentStatus
+        self.send_packet(syn_message)
+        self.set_current_status(states.SynSentStatus())
 
     def start_permanent_loops(self):
         main_looper = threading.Thread(target=self.main_loop)
@@ -65,14 +70,12 @@ class PseudoTCPSocket:
     def read_loop(self):
         """Puts packets in the receive queue"""
         while True:
-            try:
-                packet, address = self.sock.recvfrom(utility.PACKET_SIZE)
-            except socket.timeout:
-                continue
+            packet, address = self.receive_packet()
 
             print(f"Received a packet {utility.packet_to_string(packet)} from {address} with SN={utility.get_sn(packet[0])}"
                   f" and RN={utility.get_rn(packet[0])}.")
             if self.current_partner is None or address == self.current_partner:
+                # Add the packet to the receive queue only if it was received from the current partner
                 self.receive_queue.put((packet, address), block=True)
 
     def main_loop(self):
@@ -84,18 +87,19 @@ class PseudoTCPSocket:
                 packet, address = self.receive_queue.get(block=True, timeout=utility.TIMEOUT)
             except queue.Empty:
                 # Timed out waiting for a packet
-                print(f"Timeout! Handling with current status {self.current_status.STATUS_NAME}")
-                self.current_status.handle_timeout(self)
+                print(f"Timeout! Handling with current status {self.get_current_status().STATUS_NAME}")
+                self.get_current_status().handle_timeout(self)
+                continue
 
-            print(f"Handling packet with current status {self.current_status.STATUS_NAME}")
-            self.current_status.handle_packet(packet=packet, origin_address=address, node=self)
+            print(f"Handling packet with current status {self.get_current_status().STATUS_NAME}")
+            self.get_current_status().handle_packet(packet=packet, origin_address=address, node=self)
 
     def send(self, message):
         bytes_sent = 0
 
         while bytes_sent < len(message):
             # TODO add data left
-            packet = utility.create_packet(sn=self.current_sn, rn=self.current_rn,
+            packet = utility.create_packet(sn=self.get_current_sn(), rn=self.get_current_rn(),
                                            payload=message[bytes_sent:bytes_sent + utility.PAYLOAD_SIZE])
             self.send_queue.put(packet, block=True)
             bytes_sent += utility.PAYLOAD_SIZE
@@ -112,3 +116,75 @@ class PseudoTCPSocket:
 
     def close(self):
         raise NotImplementedError
+
+    def send_packet(self, packet):
+        self.sock_lock.acquire()
+        self.sock.sendto(packet, self.get_current_partner())
+        self.sock_lock.release()
+
+    def receive_packet(self):
+        packet, address = self.sock.recvfrom(utility.PACKET_SIZE)
+        return packet, address
+
+    def get_current_sn(self):
+        sn = None
+        self.current_sn_lock.acquire()
+        sn = self.current_sn
+        self.current_sn_lock.release()
+        return sn
+    
+    def set_current_sn(self, sn):
+        self.current_sn_lock.acquire()
+        self.current_sn = sn
+        self.current_sn_lock.release()
+
+    def flip_current_sn(self):
+        self.current_sn_lock.acquire()
+        self.current_sn = not self.current_sn
+        self.current_sn_lock.release()
+
+    def get_current_rn(self):
+        rn = None
+        self.current_rn_lock.acquire()
+        rn = self.current_rn
+        self.current_rn_lock.release()
+        return rn
+    
+    def set_current_rn(self, rn):
+        self.current_rn_lock.acquire()
+        self.current_rn = rn
+        self.current_rn_lock.release()
+
+    def flip_current_rn(self):
+        self.current_rn_lock.acquire()
+        self.current_rn = not self.current_rn
+        self.current_rn_lock.release()
+
+    def get_current_partner(self):
+        partner = None
+        self.current_partner_lock.acquire()
+        partner = self.current_partner
+        self.current_partner_lock.release()
+        return partner
+
+    def set_current_partner(self, new_partner):
+        self.current_partner_lock.acquire()
+        self.current_partner = new_partner
+
+        # Partner has changed, the received queue should be emptied
+        # TODO lock for the queue
+        self.receive_queue = queue.Queue()
+
+        self.current_partner_lock.release()
+
+    def get_current_status(self):
+        status = None
+        self.current_status_lock.acquire()
+        status = self.current_status
+        self.current_status_lock.release()
+        return status
+
+    def set_current_status(self, new_status):
+        self.current_status_lock.acquire()
+        self.current_status = new_status
+        self.current_status_lock.release()

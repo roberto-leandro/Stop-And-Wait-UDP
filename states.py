@@ -54,17 +54,15 @@ class AcceptStatus(State):
         print("The packet received was a valid SYN!")
 
         # Set the state variables to synchronize with the partner
-        node.current_status = SynReceivedStatus()
-        node.current_partner_lock.acquire()
-        node.current_partner = origin_address
-        node.current_partner_lock.release()
-        node.current_rn = not utility.get_sn(header)
-        node.current_sn = random.choice([True, False])
+        node.set_current_status(SynReceivedStatus())
+        node.set_current_partner(origin_address)
+        node.flip_current_rn()
+        node.set_current_sn(random.choice([True, False]))
 
         # Send SYN-ACK
-        syn_ack_message = utility.create_packet(syn=True, ack=True, sn=node.current_sn, rn=node.current_rn)
+        syn_ack_message = utility.create_packet(syn=True, ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
         print(f"Sending {utility.packet_to_string(syn_ack_message)} to {origin_address}")
-        node.sock.sendto(syn_ack_message, origin_address)
+        node.send_packet(syn_ack_message)
 
     @staticmethod
     def handle_timeout(node):
@@ -78,8 +76,8 @@ class SynReceivedStatus(State):
     def handle_packet(packet, origin_address, node):
         header = packet[0]
         is_ack = utility.are_flags_set(header, utility.HEADER_ACK) \
-                 and utility.get_sn(header) == node.current_rn \
-                 and utility.get_rn(header) != node.current_sn \
+                 and utility.get_sn(header) == node.get_current_rn() \
+                 and utility.get_rn(header) != node.get_current_sn() \
                  and utility.are_flags_unset(header, utility.HEADER_FIN, utility.HEADER_SYN)
 
         if not is_ack:
@@ -88,9 +86,9 @@ class SynReceivedStatus(State):
 
         print("Message received was a proper ACK, connection established!!")
         # Update current variables: connection is now established, sn and rn should be flipped
-        node.current_status = EstablishedStatus()
-        node.current_sn = utility.get_rn(header)
-        node.current_rn = not utility.get_sn(header)
+        node.set_current_status(EstablishedStatus())
+        node.set_current_sn(utility.get_rn(header))
+        node.set_current_rn = not utility.get_sn(header)
 
     @staticmethod
     def handle_timeout(node):
@@ -104,7 +102,7 @@ class SynSentStatus(State):
     def handle_packet(packet, origin_address, node):
         header = packet[0]
         is_syn_ack = utility.are_flags_set(header, utility.HEADER_SYN, utility.HEADER_ACK) \
-                     and utility.get_rn(header) != node.current_sn \
+                     and utility.get_rn(header) != node.get_current_sn() \
                      and utility.are_flags_unset(header, utility.HEADER_FIN)
 
         if not is_syn_ack:
@@ -113,14 +111,14 @@ class SynSentStatus(State):
 
         print("Message received was a proper SYN-ACK, connection established!")
         # Update current variables: connection is now established, sn and rn should be flipped
-        node.current_status = EstablishedStatus()
-        node.current_sn = utility.get_rn(header)
-        node.current_rn = not utility.get_sn(header)
+        node._set_current_status(EstablishedStatus())
+        node.set_current_sn(utility.get_rn(header))
+        node.set_current_rn(not utility.get_sn(header))
 
         # Send ACK
-        ack_message = utility.create_packet(ack=True, sn=node.current_sn, rn=node.current_rn)
+        ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_sn())
         print(f"Sending ACK {utility.packet_to_string(ack_message)}")
-        node.sock.sendall(ack_message)
+        node.send_packet(ack_message)
 
     @staticmethod
     def handle_timeout(node):
@@ -136,7 +134,7 @@ class EstablishedStatus(State):
         header = packet[0]
         # Parse the packet, determine if its valid and if an ACK should be sent
         # Check if packet contains new data
-        if utility.get_sn(header) == node.current_rn:
+        if utility.get_sn(header) == node.get_current_rn():
             is_valid = True
             print("Packet contains new data!")
 
@@ -144,18 +142,18 @@ class EstablishedStatus(State):
             node.payload_queue.put(packet[utility.HEADER_SIZE:])
 
             # Increase rn
-            node.current_rn = not node.current_rn
+            node.current_rn = not node.get_current_rn()
 
             # ACK the sender
-            ack_message = utility.create_packet(ack=True, sn=node.current_sn, rn=node.current_rn)
+            ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
             print(f"Sending ACK {utility.packet_to_string(ack_message)}")
-            node.sock.sendto(ack_message, node.current_partner)
+            node.send_packet(ack_message)
 
         # Check if packet contains an ACK
-        if utility.are_flags_set(header, utility.HEADER_ACK) and utility.get_rn(header) != node.current_sn:
+        if utility.are_flags_set(header, utility.HEADER_ACK) and utility.get_rn(header) != node.get_current_sn():
             is_valid = True
             print("Packet contains an ACK!")
-            node.current_sn = utility.get_rn(header)
+            node.set_current_sn(utility.get_rn(header))
 
             # Send next packet
             # TODO add locks
@@ -168,11 +166,11 @@ class EstablishedStatus(State):
                 print("Nothing to transmit...")
 
             if packet:
-                print(f"The next packet is {utility.packet_to_string(packet)}, sending to {node.current_partner}...")
-                node.sock.sendto(packet, node.current_partner)
+                print(f"The next packet is {utility.packet_to_string(packet)}, sending to {node.get_current_partner()}...")
+                node.sock_packet(packet)
 
         if not is_valid:
-            print(f"The SN in the packet was {utility.get_sn(header)}, expected {node.current_rn}...")
+            print(f"The SN in the packet was {utility.get_sn(header)}, expected {node.get_current_rn()}...")
 
     @staticmethod
     def handle_timeout(node):
@@ -187,6 +185,6 @@ class EstablishedStatus(State):
 
         if packet:
             print(f"The latest packet is {utility.packet_to_string(packet)}, sending to {node.current_partner}...")
-            node.sock.sendto(packet, node.current_partner)
+            node.send_packet(packet)
 
 
