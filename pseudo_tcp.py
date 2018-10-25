@@ -10,7 +10,6 @@ class PseudoTCPSocket:
 
     # TODO handshake does not happen properly, sometimes the node thinks it's receiving data when receiving an ACK, or viceversa
     # TODO the message does not start being sent when send() is called, instead it starts after a timeout
-    # TODO create a method to peek from the queue, as the packets should not be removed in case they need to be retransmitted
     def __init__(self):
         # Socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -32,6 +31,7 @@ class PseudoTCPSocket:
         self.current_status_lock = threading.Lock()
         self.current_sn_lock = threading.Lock()
         self.current_rn_lock = threading.Lock()
+        self.send_queue_lock = threading.Lock()  # Necessary for the implementation of peek_send_queue()
 
     def bind(self, address):
         self.sock.bind(address)
@@ -116,6 +116,14 @@ class PseudoTCPSocket:
 
     def close(self):
         raise NotImplementedError
+
+    def peek_send_queue(self):
+        self.send_queue_lock.acquire()
+        # TODO handle empty queue exception
+        first_packet = self.send_queue.queue[0]
+        self.send_queue_lock.release()
+        return first_packet
+
 
     def send_packet(self, packet):
         self.sock_lock.acquire()

@@ -116,7 +116,7 @@ class SynSentStatus(State):
         node.set_current_rn(not utility.get_sn(header))
 
         # Send ACK
-        ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_sn())
+        ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
         print(f"Sending ACK {utility.packet_to_string(ack_message)}")
         node.send_packet(ack_message)
 
@@ -152,17 +152,18 @@ class EstablishedStatus(State):
         # Check if packet contains an ACK
         if utility.are_flags_set(header, utility.HEADER_ACK) and utility.get_rn(header) != node.get_current_sn():
             is_valid = True
-            print("Packet contains an ACK!")
+            # Pop the old latest packet
+            old_packet = node.send_queue.get(block=False)
+            print(f"Packet contains an ACK, which means the packet {utility.packet_to_string(old_packet)} has been sent"
+                  f"successfully!")
             node.set_current_sn(utility.get_rn(header))
 
             # Send next packet
-            # TODO add locks
             print("Sending next packet...")
-            # TODO get from the queue without removing the packet, as it might need to be retransmitted if its lost
             packet = None
             try:
-                packet = node.send_queue.get(block=False)
-            except queue.Empty:
+                packet = node.peek_send_queue()
+            except IndexError:
                 print("Nothing to transmit...")
 
             if packet:
@@ -170,21 +171,18 @@ class EstablishedStatus(State):
                 node.sock_packet(packet)
 
         if not is_valid:
-            print(f"The SN in the packet was {utility.get_sn(header)}, expected {node.get_current_rn()}...")
+            print(f"The SN in the packet was {utility.get_sn(header)}, expected {node.get_current_rn()}. Ignoring...")
 
     @staticmethod
     def handle_timeout(node):
         # Resend the next packet in the send queue
         print("Retransmitting latest packet...")
-        # TODO get from the queue without removing the packet, as it might need to be retransmitted if its lost
         packet = None
         try:
-            packet = node.send_queue.get(block=False)
-        except queue.Empty:
+            packet = node.peek_send_queue()
+        except IndexError:
             print("Nothing to retransmit...")
 
         if packet:
             print(f"The latest packet is {utility.packet_to_string(packet)}, sending to {node.current_partner}...")
             node.send_packet(packet)
-
-
