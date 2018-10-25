@@ -7,6 +7,7 @@ In order to handle the different states a connection might have at any given tim
 Each class in this module defines a state that can be held by the PseudoTCP connection, and implements its behavior on
 the event of receiving a packet or a timeout.
 """
+# TODO status classes for close, timeout handling for all statuses except ESTABLISHED
 
 
 class State(ABC):
@@ -61,7 +62,7 @@ class AcceptStatus(State):
 
         # Send SYN-ACK
         syn_ack_message = utility.create_packet(syn=True, ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
-        print(f"Sending {utility.packet_to_string(syn_ack_message)} to {origin_address}")
+        print(f"Sending SYN-ACK...")
         node.send_packet(syn_ack_message)
 
     @staticmethod
@@ -88,7 +89,7 @@ class SynReceivedStatus(State):
         # Update current variables: connection is now established, sn and rn should be flipped
         node.set_current_status(EstablishedStatus())
         node.set_current_sn(utility.get_rn(header))
-        node.set_current_rn = not utility.get_sn(header)
+        node.set_current_rn(not utility.get_sn(header))
 
     @staticmethod
     def handle_timeout(node):
@@ -117,7 +118,7 @@ class SynSentStatus(State):
 
         # Send ACK
         ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
-        print(f"Sending ACK {utility.packet_to_string(ack_message)}")
+        print(f"Sending ACK...")
         node.send_packet(ack_message)
 
     @staticmethod
@@ -138,24 +139,30 @@ class EstablishedStatus(State):
             is_valid = True
             print("Packet contains new data!")
 
-            # Put the payload in the proccessed messages queue
+            # Put the payload in the processed messages queue
             node.payload_queue.put(packet[utility.HEADER_SIZE:])
 
             # Increase rn
-            node.current_rn = not node.get_current_rn()
+            node.set_current_rn(not utility.get_sn(header))
 
             # ACK the sender
             ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
-            print(f"Sending ACK {utility.packet_to_string(ack_message)}")
+            print(f"Sending ACK...")
             node.send_packet(ack_message)
 
         # Check if packet contains an ACK
         if utility.are_flags_set(header, utility.HEADER_ACK) and utility.get_rn(header) != node.get_current_sn():
+            print("Packet is an ACK!")
             is_valid = True
             # Pop the old latest packet
-            old_packet = node.send_queue.get(block=False)
+            try:
+                old_packet = node.send_queue.get(block=False)
+            except queue.Empty:
+                print("Strange, an ACK was received even though the send queue is empty...")
+                return
+
             print(f"Packet contains an ACK, which means the packet {utility.packet_to_string(old_packet)} has been sent"
-                  f"successfully!")
+                  f" successfully!")
             node.set_current_sn(utility.get_rn(header))
 
             # Send next packet
@@ -167,8 +174,7 @@ class EstablishedStatus(State):
                 print("Nothing to transmit...")
 
             if packet:
-                print(f"The next packet is {utility.packet_to_string(packet)}, sending to {node.get_current_partner()}...")
-                node.sock_packet(packet)
+                node.send_packet(packet)
 
         if not is_valid:
             print(f"The SN in the packet was {utility.get_sn(header)}, expected {node.get_current_rn()}. Ignoring...")
@@ -178,11 +184,15 @@ class EstablishedStatus(State):
         # Resend the next packet in the send queue
         print("Retransmitting latest packet...")
         packet = None
+
+        if node.send_queue.empty():
+            print("Nothing to retransmit...")
+            return
+
         try:
             packet = node.peek_send_queue()
         except IndexError:
             print("Nothing to retransmit...")
 
         if packet:
-            print(f"The latest packet is {utility.packet_to_string(packet)}, sending to {node.current_partner}...")
             node.send_packet(packet)

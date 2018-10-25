@@ -8,8 +8,13 @@ import utility
 
 class PseudoTCPSocket:
 
-    # TODO handshake does not happen properly, sometimes the node thinks it's receiving data when receiving an ACK, or viceversa
+    # TODO handshake does not happen properly, sometimes the node thinks it's receiving data when receiving an ACK, or
+    # viceversa
     # TODO the message does not start being sent when send() is called, instead it starts after a timeout
+    # TODO log all the prints to a file
+    # TODO close mechanism
+    # TODO add data_left to the header of each packet in send()
+    # TODO add a random chance to "lose" packets
     def __init__(self):
         # Socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -26,7 +31,8 @@ class PseudoTCPSocket:
         self.payload_queue = queue.Queue()
         
         # Locks
-        self.sock_lock = threading.Lock()
+        self.sock_read_lock = threading.Lock()
+        self.sock_write_lock = threading.Lock()
         self.current_partner_lock = threading.Lock()
         self.current_status_lock = threading.Lock()
         self.current_sn_lock = threading.Lock()
@@ -56,7 +62,7 @@ class PseudoTCPSocket:
         self.set_current_sn(random.choice([True, False]))
         syn_message = utility.create_packet(syn=True, sn=self.get_current_sn())
         # Send SYN
-        print(f"Sending SYN {utility.packet_to_string(syn_message)} to {address}")
+        print(f"Sending SYN...")
         self.send_packet(syn_message)
         self.set_current_status(states.SynSentStatus())
 
@@ -72,8 +78,6 @@ class PseudoTCPSocket:
         while True:
             packet, address = self.receive_packet()
 
-            print(f"Received a packet {utility.packet_to_string(packet)} from {address} with SN={utility.get_sn(packet[0])}"
-                  f" and RN={utility.get_rn(packet[0])}.")
             if self.current_partner is None or address == self.current_partner:
                 # Add the packet to the receive queue only if it was received from the current partner
                 self.receive_queue.put((packet, address), block=True)
@@ -104,7 +108,8 @@ class PseudoTCPSocket:
             self.send_queue.put(packet, block=True)
             bytes_sent += utility.PAYLOAD_SIZE
 
-    #TODO modify implementation to read the data remaining from the packet's headers
+    # TODO modify implementation to read the data remaining from the packet's headers
+    # TODO add a random chance to "lose" packets
     def recv(self, size):
         """Read from the processed message queue until data_left is 0"""
         message = bytearray(size)
@@ -120,19 +125,23 @@ class PseudoTCPSocket:
 
     def peek_send_queue(self):
         self.send_queue_lock.acquire()
-        # TODO handle empty queue exception
         first_packet = self.send_queue.queue[0]
         self.send_queue_lock.release()
         return first_packet
 
-
     def send_packet(self, packet):
-        self.sock_lock.acquire()
+        print(f"Sending packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet[0])} and "
+              f"RN={utility.get_rn(packet[0])} and ACK={utility.are_flags_set(packet[0], utility.HEADER_ACK)} to {self.get_current_partner()}")
+        self.sock_write_lock.acquire()
         self.sock.sendto(packet, self.get_current_partner())
-        self.sock_lock.release()
+        self.sock_write_lock.release()
 
     def receive_packet(self):
+        self.sock_read_lock.acquire()
         packet, address = self.sock.recvfrom(utility.PACKET_SIZE)
+        self.sock_read_lock.release()
+        print(f"Received packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet[0])} and "
+              f"RN={utility.get_rn(packet[0])} and ACK={utility.are_flags_set(packet[0], utility.HEADER_ACK)} from {address}")
         return packet, address
 
     def get_current_sn(self):
