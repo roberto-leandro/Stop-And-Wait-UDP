@@ -88,7 +88,7 @@ class SynReceivedStatus(State):
         print("Message received was a proper ACK, connection established!!")
         # Update current variables: connection is now established, sn and rn should be flipped
         node.set_current_status(EstablishedStatus())
-        node.set_current_sn(utility.get_rn(header))
+        # node.set_current_sn(utility.get_rn(header))
         node.set_current_rn(not utility.get_sn(header))
 
     @staticmethod
@@ -140,6 +140,7 @@ class EstablishedStatus(State):
             print("Packet contains new data!")
 
             # Put the payload in the processed messages queue
+            # TODO we need more info in this queue to know when the file is finished
             node.payload_queue.put(packet[utility.HEADER_SIZE:])
 
             # Increase rn

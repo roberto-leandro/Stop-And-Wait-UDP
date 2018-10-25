@@ -103,8 +103,7 @@ class PseudoTCPSocket:
 
         while bytes_sent < len(message):
             # TODO add data left
-            packet = utility.create_packet(sn=self.get_current_sn(), rn=self.get_current_rn(),
-                                           payload=message[bytes_sent:bytes_sent + utility.PAYLOAD_SIZE])
+            packet = utility.create_packet(payload=message[bytes_sent:bytes_sent + utility.PAYLOAD_SIZE])
             self.send_queue.put(packet, block=True)
             bytes_sent += utility.PAYLOAD_SIZE
 
@@ -130,8 +129,17 @@ class PseudoTCPSocket:
         return first_packet
 
     def send_packet(self, packet):
+        # Write RN and SN
+        if self.get_current_sn():
+            packet[0] = packet[0] | utility.HEADER_SN
+
+        if self.get_current_rn():
+            packet[0] = packet[0] | utility.HEADER_RN
+
         print(f"Sending packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet[0])} and "
-              f"RN={utility.get_rn(packet[0])} and ACK={utility.are_flags_set(packet[0], utility.HEADER_ACK)} to {self.get_current_partner()}")
+              f"RN={utility.get_rn(packet[0])} and ACK={utility.are_flags_set(packet[0], utility.HEADER_ACK)} to "
+              f"{self.get_current_partner()}")
+
         self.sock_write_lock.acquire()
         self.sock.sendto(packet, self.get_current_partner())
         self.sock_write_lock.release()
@@ -141,7 +149,8 @@ class PseudoTCPSocket:
         packet, address = self.sock.recvfrom(utility.PACKET_SIZE)
         self.sock_read_lock.release()
         print(f"Received packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet[0])} and "
-              f"RN={utility.get_rn(packet[0])} and ACK={utility.are_flags_set(packet[0], utility.HEADER_ACK)} from {address}")
+              f"RN={utility.get_rn(packet[0])} and ACK={utility.are_flags_set(packet[0], utility.HEADER_ACK)} "
+              f"from {address}")
         return packet, address
 
     def get_current_sn(self):
