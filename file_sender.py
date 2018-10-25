@@ -3,7 +3,7 @@ from pseudo_tcp import  PseudoTCPSocket
 # Establish the connection
 node = PseudoTCPSocket()
 node.bind(("localhost", 65002))
-node.connect(("localhost", 65002))
+node.connect(("localhost", 65001))
 
 # Read and send the file
 with open("DesicionesDeDiseño.txt", "rb") as binary_file:
