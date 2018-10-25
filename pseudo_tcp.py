@@ -59,7 +59,7 @@ class PseudoTCPSocket:
         print(f"Trying to connect to {address}...")
 
         # Build the SYN message, choosing a random value for sn
-        self.set_current_sn(random.choice([True, False]))
+        self.set_current_sn(random.randint(0, 255))
         syn_message = utility.create_packet(syn=True, sn=self.get_current_sn())
         # Send SYN
         print(f"Sending SYN...")
@@ -130,14 +130,11 @@ class PseudoTCPSocket:
 
     def send_packet(self, packet):
         # Write RN and SN
-        if self.get_current_sn():
-            packet[0] = packet[0] | utility.HEADER_SN
+        packet[1] = self.get_current_rn()
+        packet[2] = self.get_current_sn()
 
-        if self.get_current_rn():
-            packet[0] = packet[0] | utility.HEADER_RN
-
-        print(f"Sending packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet[0])} and "
-              f"RN={utility.get_rn(packet[0])} and ACK={utility.are_flags_set(packet[0], utility.HEADER_ACK)} to "
+        print(f"Sending packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet)} and "
+              f"RN={utility.get_rn(packet)} and ACK={utility.are_flags_set(packet, utility.HEADER_ACK)} to "
               f"{self.get_current_partner()}")
 
         self.sock_write_lock.acquire()
@@ -148,8 +145,8 @@ class PseudoTCPSocket:
         self.sock_read_lock.acquire()
         packet, address = self.sock.recvfrom(utility.PACKET_SIZE)
         self.sock_read_lock.release()
-        print(f"Received packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet[0])} and "
-              f"RN={utility.get_rn(packet[0])} and ACK={utility.are_flags_set(packet[0], utility.HEADER_ACK)} "
+        print(f"Received packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet)} and "
+              f"RN={utility.get_rn(packet)} and ACK={utility.are_flags_set(packet, utility.HEADER_ACK)} "
               f"from {address}")
         return packet, address
 
@@ -165,9 +162,10 @@ class PseudoTCPSocket:
         self.current_sn = sn
         self.current_sn_lock.release()
 
-    def flip_current_sn(self):
+    def increase_current_sn(self):
         self.current_sn_lock.acquire()
-        self.current_sn = not self.current_sn
+        # TODO parametrisize rn max size
+        self.current_sn = 1 + self.current_sn % 255
         self.current_sn_lock.release()
 
     def get_current_rn(self):
@@ -182,9 +180,9 @@ class PseudoTCPSocket:
         self.current_rn = rn
         self.current_rn_lock.release()
 
-    def flip_current_rn(self):
+    def increase_current_rn(self):
         self.current_rn_lock.acquire()
-        self.current_rn = not self.current_rn
+        self.current_rn = 1 + self.current_rn % 255
         self.current_rn_lock.release()
 
     def get_current_partner(self):

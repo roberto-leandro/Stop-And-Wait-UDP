@@ -44,9 +44,8 @@ class AcceptStatus(State):
     @staticmethod
     def handle_packet(packet, origin_address, node):
         # Check if message contains a valid SYN
-        header = packet[0]
-        is_syn = utility.are_flags_set(header, utility.HEADER_SYN) and \
-                 utility.are_flags_unset(header, utility.HEADER_FIN | utility.HEADER_ACK)
+        is_syn = utility.are_flags_set(packet, utility.HEADER_SYN) and \
+                 utility.are_flags_unset(packet, utility.HEADER_FIN | utility.HEADER_ACK)
 
         if not is_syn:
             print("Message received was not a proper SYN...")
@@ -57,8 +56,9 @@ class AcceptStatus(State):
         # Set the state variables to synchronize with the partner
         node.set_current_status(SynReceivedStatus())
         node.set_current_partner(origin_address)
-        node.set_current_rn(not utility.get_sn(header))
-        node.set_current_sn(random.choice([True, False]))
+        node.set_current_rn(utility.get_sn(packet))
+        node.increase_current_rn()
+        node.set_current_sn(random.randint(0, 255))
 
         # Send SYN-ACK
         syn_ack_message = utility.create_packet(syn=True, ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
@@ -75,11 +75,10 @@ class SynReceivedStatus(State):
 
     @staticmethod
     def handle_packet(packet, origin_address, node):
-        header = packet[0]
-        is_ack = utility.are_flags_set(header, utility.HEADER_ACK) \
-                 and utility.get_sn(header) == node.get_current_rn() \
-                 and utility.get_rn(header) != node.get_current_sn() \
-                 and utility.are_flags_unset(header, utility.HEADER_FIN, utility.HEADER_SYN)
+        is_ack = utility.are_flags_set(packet, utility.HEADER_ACK) \
+                 and utility.get_sn(packet) == node.get_current_rn() \
+                 and utility.get_rn(packet) != node.get_current_sn() \
+                 and utility.are_flags_unset(packet, utility.HEADER_FIN, utility.HEADER_SYN)
 
         if not is_ack:
             print("Message received was not a proper ACK, retrying...")
@@ -88,8 +87,9 @@ class SynReceivedStatus(State):
         print("Message received was a proper ACK, connection established!!")
         # Update current variables: connection is now established, sn and rn should be flipped
         node.set_current_status(EstablishedStatus())
-        # node.set_current_sn(utility.get_rn(header))
-        node.set_current_rn(not utility.get_sn(header))
+        # node.set_current_sn(utility.get_rn(packet))
+        node.set_current_rn(utility.get_sn(packet))
+        node.increase_current_rn()
 
     @staticmethod
     def handle_timeout(node):
@@ -101,10 +101,9 @@ class SynSentStatus(State):
 
     @staticmethod
     def handle_packet(packet, origin_address, node):
-        header = packet[0]
-        is_syn_ack = utility.are_flags_set(header, utility.HEADER_SYN, utility.HEADER_ACK) \
-                     and utility.get_rn(header) != node.get_current_sn() \
-                     and utility.are_flags_unset(header, utility.HEADER_FIN)
+        is_syn_ack = utility.are_flags_set(packet, utility.HEADER_SYN, utility.HEADER_ACK) \
+                     and utility.get_rn(packet) != node.get_current_sn() \
+                     and utility.are_flags_unset(packet, utility.HEADER_FIN)
 
         if not is_syn_ack:
             print("Message received was not a proper SYN-ACK, retrying...")
@@ -113,8 +112,9 @@ class SynSentStatus(State):
         print("Message received was a proper SYN-ACK, connection established!")
         # Update current variables: connection is now established, sn and rn should be flipped
         node.set_current_status(EstablishedStatus())
-        node.set_current_sn(utility.get_rn(header))
-        node.set_current_rn(not utility.get_sn(header))
+        node.set_current_sn(utility.get_rn(packet))
+        node.set_current_rn(utility.get_sn(packet))
+        node.increase_current_rn()
 
         # Send ACK
         ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
@@ -132,10 +132,9 @@ class EstablishedStatus(State):
     @staticmethod
     def handle_packet(packet, origin_address, node):
         is_valid = False
-        header = packet[0]
         # Parse the packet, determine if its valid and if an ACK should be sent
         # Check if packet contains new data
-        if utility.get_sn(header) == node.get_current_rn():
+        if utility.get_sn(packet) == node.get_current_rn():
             is_valid = True
             print("Packet contains new data!")
 
@@ -144,7 +143,7 @@ class EstablishedStatus(State):
             node.payload_queue.put(packet[utility.HEADER_SIZE:])
 
             # Increase rn
-            node.set_current_rn(not utility.get_sn(header))
+            node.increase_current_rn()
 
             # ACK the sender
             ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
@@ -152,7 +151,7 @@ class EstablishedStatus(State):
             node.send_packet(ack_message)
 
         # Check if packet contains an ACK
-        if utility.are_flags_set(header, utility.HEADER_ACK) and utility.get_rn(header) != node.get_current_sn():
+        if utility.are_flags_set(packet, utility.HEADER_ACK) and utility.get_rn(packet) != node.get_current_sn():
             print("Packet is an ACK!")
             is_valid = True
             # Pop the old latest packet
@@ -164,7 +163,7 @@ class EstablishedStatus(State):
 
             print(f"Packet contains an ACK, which means the packet {utility.packet_to_string(old_packet)} has been sent"
                   f" successfully!")
-            node.set_current_sn(utility.get_rn(header))
+            node.set_current_sn(utility.get_rn(packet))
 
             # Send next packet
             print("Sending next packet...")
@@ -178,7 +177,7 @@ class EstablishedStatus(State):
                 node.send_packet(packet)
 
         if not is_valid:
-            print(f"The SN in the packet was {utility.get_sn(header)}, expected {node.get_current_rn()}. Ignoring...")
+            print(f"The SN in the packet was {utility.get_sn(packet)}, expected {node.get_current_rn()}. Ignoring...")
 
     @staticmethod
     def handle_timeout(node):
