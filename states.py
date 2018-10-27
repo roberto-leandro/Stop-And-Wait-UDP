@@ -87,9 +87,9 @@ class SynReceivedStatus(State):
         print("Message received was a proper ACK, connection established!!")
         # Update current variables: connection is now established, sn and rn should be flipped
         node.set_current_status(EstablishedStatus())
-        # node.set_current_sn(utility.get_rn(packet))
+        node.set_current_sn(utility.get_rn(packet))
         node.set_current_rn(utility.get_sn(packet))
-        node.increase_current_rn()
+        #node.increase_current_rn()
 
     @staticmethod
     def handle_timeout(node):

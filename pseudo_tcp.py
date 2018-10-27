@@ -8,13 +8,12 @@ import utility
 
 class PseudoTCPSocket:
 
-    # TODO handshake does not happen properly, sometimes the node thinks it's receiving data when receiving an ACK, or
-    # viceversa
     # TODO the message does not start being sent when send() is called, instead it starts after a timeout
     # TODO log all the prints to a file
     # TODO close mechanism
     # TODO add data_left to the header of each packet in send()
     # TODO add a random chance to "lose" packets
+    # TODO send title of the file somehow
     def __init__(self):
         # Socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
