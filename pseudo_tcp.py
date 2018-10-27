@@ -161,11 +161,13 @@ class PseudoTCPSocket:
         self.current_sn_lock.acquire()
         self.current_sn = sn
         self.current_sn_lock.release()
+        print(f"Set current sn to {sn}")
 
     def increase_current_sn(self):
         self.current_sn_lock.acquire()
         # TODO parametrisize rn max size
         self.current_sn = 1 + self.current_sn % 255
+        print(f"Increased current sn to {sn}")
         self.current_sn_lock.release()
 
     def get_current_rn(self):
@@ -179,10 +181,12 @@ class PseudoTCPSocket:
         self.current_rn_lock.acquire()
         self.current_rn = rn
         self.current_rn_lock.release()
+        print(f"Set current rn to {rn}")
 
     def increase_current_rn(self):
         self.current_rn_lock.acquire()
         self.current_rn = 1 + self.current_rn % 255
+        print(f"Increased current rn to {self.current_rn}")
         self.current_rn_lock.release()
 
     def get_current_partner(self):
