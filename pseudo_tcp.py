@@ -12,8 +12,10 @@ class PseudoTCPSocket:
     # TODO log all the prints to a file
     # TODO close mechanism
     # TODO add data_left to the header of each packet in send()
-    # TODO add a random chance to "lose" packets
     # TODO send title of the file somehow
+    # TODO pick a good timeout
+    # TODO start a new thread for each incoming connection
+        # Probably going to require a dict with each port-ip pair as key and a structure/thread as data
     def __init__(self):
         # Socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -65,6 +67,9 @@ class PseudoTCPSocket:
         self.send_packet(syn_message)
         self.set_current_status(states.SynSentStatus())
 
+        # Send SYN is the send_queue, as it might need to be resent if the packet is lost
+        self.send_queue.put(syn_message)
+
     def start_permanent_loops(self):
         main_looper = threading.Thread(target=self.main_loop)
         reader = threading.Thread(target=self.read_loop)
@@ -77,8 +82,12 @@ class PseudoTCPSocket:
         while True:
             packet, address = self.receive_packet()
 
-            if self.current_partner is None or address == self.current_partner:
-                # Add the packet to the receive queue only if it was received from the current partner
+            # Randomly drop some packets to test the Stop-And-Wait algorithm
+            if random.randint(1, 10) == 1:
+                print("Oops! Dropped a packet...")
+
+            # Add the packet to the receive queue only if it was received from the current partner
+            elif self.current_partner is None or address == self.current_partner:
                 self.receive_queue.put((packet, address), block=True)
 
     def main_loop(self):
@@ -107,7 +116,6 @@ class PseudoTCPSocket:
             bytes_sent += utility.PAYLOAD_SIZE
 
     # TODO modify implementation to read the data remaining from the packet's headers
-    # TODO add a random chance to "lose" packets
     def recv(self, size):
         """Read from the processed message queue until data_left is 0"""
         message = bytearray(size)
@@ -144,6 +152,7 @@ class PseudoTCPSocket:
         self.sock_read_lock.acquire()
         packet, address = self.sock.recvfrom(utility.PACKET_SIZE)
         self.sock_read_lock.release()
+
         print(f"Received packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet)} and "
               f"RN={utility.get_rn(packet)} and ACK={utility.are_flags_set(packet, utility.HEADER_ACK)} "
               f"from {address}")

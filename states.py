@@ -65,9 +65,13 @@ class AcceptStatus(State):
         print(f"Sending SYN-ACK...")
         node.send_packet(syn_ack_message)
 
+        # Store this packet in the send queue, in case it needs to be retransmitted later
+        node.send_queue.put(syn_ack_message)
+
     @staticmethod
     def handle_timeout(node):
-        pass
+        # Do nothing
+        print("Still listening for connections, do nothing...")
 
 
 class SynReceivedStatus(State):
@@ -84,16 +88,20 @@ class SynReceivedStatus(State):
             print("Message received was not a proper ACK, retrying...")
             return
 
+        # Remove the SYN-ACK packet from the send queue, not needed anymore
+        node.send_queue.get()
+
         print("Message received was a proper ACK, connection established!!")
-        # Update current variables: connection is now established, sn and rn should be flipped
+        # Update current variables: connection is now established
         node.set_current_status(EstablishedStatus())
         node.set_current_sn(utility.get_rn(packet))
         node.set_current_rn(utility.get_sn(packet))
-        #node.increase_current_rn()
 
     @staticmethod
     def handle_timeout(node):
-        pass
+        # Resend SYN-ACK, should be the next message in the send queue
+        print("Resending SYN-ACK...")
+        node.send_packet(node.peek_send_queue())
 
 
 class SynSentStatus(State):
@@ -109,6 +117,9 @@ class SynSentStatus(State):
             print("Message received was not a proper SYN-ACK, retrying...")
             return
 
+        # Remove the SYN packet from the send queue, not needed anymore
+        node.send_queue.get()
+
         print("Message received was a proper SYN-ACK, connection established!")
         # Update current variables: connection is now established, sn and rn should be flipped
         node.set_current_status(EstablishedStatus())
@@ -121,9 +132,13 @@ class SynSentStatus(State):
         print(f"Sending ACK...")
         node.send_packet(ack_message)
 
+        # TODO if this ACK is lost, its impossible to establish a connection
+
     @staticmethod
     def handle_timeout(node):
-        pass
+        # Resend SYN, should be the next message in the send queue
+        print("Resending SYN...")
+        node.send_packet(node.peek_send_queue())
 
 
 class EstablishedStatus(State):
@@ -181,6 +196,7 @@ class EstablishedStatus(State):
 
     @staticmethod
     def handle_timeout(node):
+        # TODO this should also resend the latest ACK
         # Resend the next packet in the send queue
         print("Retransmitting latest packet...")
         packet = None
