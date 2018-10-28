@@ -90,6 +90,7 @@ class SynReceivedStatus(State):
 
         # Remove the SYN-ACK packet from the send queue, not needed anymore
         node.send_queue.get()
+        node.send_queue.task_done()
 
         print("Message received was a proper ACK, connection established!!")
         # Update current variables: connection is now established
@@ -119,6 +120,7 @@ class SynSentStatus(State):
 
         # Remove the SYN packet from the send queue, not needed anymore
         node.send_queue.get()
+        node.send_queue.task_done()
 
         print("Message received was a proper SYN-ACK, connection established!")
         # Update current variables: connection is now established, sn and rn should be flipped
@@ -181,6 +183,7 @@ class EstablishedStatus(State):
             # Pop the old latest packet
             try:
                 old_packet = node.send_queue.get(block=False)
+                node.send_queue.task_done()
             except queue.Empty:
                 print("Strange, an ACK was received even though the send queue is empty...")
                 return

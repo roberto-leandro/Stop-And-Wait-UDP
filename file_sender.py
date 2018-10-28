@@ -17,3 +17,4 @@ with open(FILENAME, "rb") as binary_file:
     node.send(FILENAME.encode())
 
     node.send(data)
+    node.close()

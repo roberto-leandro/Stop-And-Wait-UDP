@@ -20,8 +20,8 @@ class PseudoTCPSocket:
         
         # State variables
         self.current_status = states.ClosedStatus()
-        self.current_sn = None
-        self.current_rn = None
+        self.current_sn = 0
+        self.current_rn = 0
         self.current_partner = None
         
         # Queues 
@@ -135,6 +135,8 @@ class PseudoTCPSocket:
         return message
 
     def close(self):
+        # Block until all task in the queue are done
+        self.send_queue.join()
         close_packet = utility.create_packet(fin=True, sn=self.get_current_sn(), rn=self.get_current_rn())
         self.increase_current_sn()
         self.send_packet(close_packet)
@@ -186,7 +188,7 @@ class PseudoTCPSocket:
         self.current_sn_lock.acquire()
         # TODO parametrisize rn max size
         self.current_sn = 1 + self.current_sn % 255
-        print(f"Increased current sn to {sn}")
+        print(f"Increased current sn to {self.current_sn}")
         self.current_sn_lock.release()
 
     def get_current_rn(self):

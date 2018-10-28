@@ -12,3 +12,4 @@ filename = filename + "_received.txt"  # Avoid name collisions
 message = node.recv()
 with open(filename, "wb") as binary_file:
     num_bytes_written = binary_file.write(message)
+    node.close()
