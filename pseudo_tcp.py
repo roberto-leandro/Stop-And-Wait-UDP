@@ -20,8 +20,8 @@ class PseudoTCPSocket:
         
         # State variables
         self.current_status = states.ClosedStatus()
-        self.current_sn = False
-        self.current_rn = False
+        self.current_sn = None
+        self.current_rn = None
         self.current_partner = None
         
         # Queues 
@@ -36,7 +36,6 @@ class PseudoTCPSocket:
         self.current_status_lock = threading.Lock()
         self.current_sn_lock = threading.Lock()
         self.current_rn_lock = threading.Lock()
-        self.send_queue_lock = threading.Lock()  # Necessary for the implementation of peek_send_queue()
 
     def bind(self, address):
         self.sock.bind(address)
@@ -136,12 +135,15 @@ class PseudoTCPSocket:
         return message
 
     def close(self):
-        raise NotImplementedError
+        close_packet = utility.create_packet(fin=True, sn=self.get_current_sn(), rn=self.get_current_rn())
+        self.increase_current_sn()
+        self.send_packet(close_packet)
+        self.send_queue.put(close_packet)
+        self.set_current_status(states.CloseSentStatus)
 
     def peek_send_queue(self):
-        self.send_queue_lock.acquire()
-        first_packet = self.send_queue.queue[0]
-        self.send_queue_lock.release()
+        with self.send_queue.mutex:
+            first_packet = self.send_queue.queue[0]
         return first_packet
 
     def send_packet(self, packet):

@@ -221,3 +221,27 @@ class EstablishedStatus(State):
 
         if packet:
             node.send_packet(packet)
+
+
+class CloseSentStatus(State):
+    STATUS_NAME = "CLOSE_SENT"
+
+    @staticmethod
+    def handle_packet(packet, origin_address, node):
+        pass
+
+    @staticmethod
+    def handle_timeout(node):
+        pass
+
+
+class CloseWaitStatus(State):
+    STATUS_NAME = "CLOSE_WAIT"
+
+    @staticmethod
+    def handle_packet(packet, origin_address, node):
+        pass
+
+    @staticmethod
+    def handle_timeout(node):
+        pass
