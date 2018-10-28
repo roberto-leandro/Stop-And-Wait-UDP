@@ -23,12 +23,14 @@ class PseudoTCPSocket:
         self.current_sn = 0
         self.current_rn = 0
         self.current_partner = None
-        
-        # Queues 
+
+        self.stopper = threading.Event()
+
+        # Queues
         self.send_queue = queue.Queue()
         self.receive_queue = queue.Queue()
         self.payload_queue = queue.Queue()
-        
+
         # Locks
         self.sock_read_lock = threading.Lock()
         self.sock_write_lock = threading.Lock()
@@ -76,7 +78,8 @@ class PseudoTCPSocket:
 
     def read_loop(self):
         """Puts packets in the receive queue"""
-        while True:
+        while not self.stopper.is_set():
+            # FIXME: receive_packets recvfrom call blocks
             packet, address = self.receive_packet()
 
             # Randomly drop some packets to test the Stop-And-Wait algorithm
@@ -86,11 +89,12 @@ class PseudoTCPSocket:
             # Add the packet to the receive queue only if it was received from the current partner
             if self.current_partner is None or address == self.current_partner:
                 self.receive_queue.put((packet, address), block=True)
+        print("Stopped read loop")
 
     def main_loop(self):
         """This loop will handle the three main events: receiving data from an upper layer, receiving an ack, or a
         timeout"""
-        while True:
+        while not self.stopper.is_set():
             try:
                 # This call blocks until an element is available
                 packet, address = self.receive_queue.get(block=True, timeout=utility.TIMEOUT)
@@ -102,6 +106,7 @@ class PseudoTCPSocket:
 
             print(f"Handling packet with current status {self.get_current_status().STATUS_NAME}")
             self.get_current_status().handle_packet(packet=packet, origin_address=address, node=self)
+        print("Stopped main loop")
 
     def send(self, message):
         bytes_sent = 0

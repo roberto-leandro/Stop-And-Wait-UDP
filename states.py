@@ -203,6 +203,13 @@ class EstablishedStatus(State):
             if packet:
                 node.send_packet(packet)
 
+        elif utility.are_flags_set(packet, utility.HEADER_FIN):
+            # TODO: check the other state variables
+            # FIXME: increase rn/sn ???
+            ack_close_packet = utility.create_packet(fin=True, sn=node.get_current_sn(), rn=node.get_current_rn())
+            node.send_packet(ack_close_packet)
+            node.set_current_status(ClosedStatus())
+
         if not is_valid:
             print(f"The SN in the packet was {utility.get_sn(packet)}, expected {node.get_current_rn()}. Ignoring...")
 
@@ -231,20 +238,31 @@ class CloseSentStatus(State):
 
     @staticmethod
     def handle_packet(packet, origin_address, node):
-        pass
+        is_valid_ack = utility.are_flags_set(packet, utility.HEADER_ACK) \
+                       and utility.get_rn(packet) != node.get_current_sn() \
+                       and utility.are_flags_unset(packet, utility.HEADER_FIN, utility.HEADER_SYN)
+
+        if not is_valid_ack:
+            print("Message received was not a proper ACK, \"retrying\"...")
+            return
+
+        # Remove packer from queue, and notify a task done
+        node.send_queue.get()
+        node.send_queue.task_done()
+
+        # TODO: CloseWaitStatus
+        print("Message received was a proper ACK, disconnection after timeout in CLOSE_WAIT STATE")
+        # Update current variables: connection is now established, sn and rn should be flipped
+        node.set_current_status(ClosedStatus())
+        node.increase_current_rn()
+
+        # FIXME: temporary
+        node.stopper.set()
 
     @staticmethod
     def handle_timeout(node):
-        pass
+        # node.send(node.peek_send_queue())
+        node.set_current_status(ClosedStatus())
 
-
-class CloseWaitStatus(State):
-    STATUS_NAME = "CLOSE_WAIT"
-
-    @staticmethod
-    def handle_packet(packet, origin_address, node):
-        pass
-
-    @staticmethod
-    def handle_timeout(node):
-        pass
+        # FIXME: temporary
+        node.stopper.set()
