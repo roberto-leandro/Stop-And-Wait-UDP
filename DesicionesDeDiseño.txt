@@ -1,6 +1,6 @@
-1. Estructura del paquete: 8 bits de payload, 1 bit de SYN, 1 bit de ACK, 1 bit de FIN, 1 bit de SN, 1 bit de RN, 1 bit de fin de mensaje y 2 bits vacíos. 
+1. Estructura del paquete: 8 bits de payload, 1 bit de SYN, 1 bit de ACK, 1 bit de FIN, 1 bit de SN, 1 bit de RN, 1 bit de fin de mensaje y 2 bits vacíos.
 2. Dentro del paquete no se envía la dirección y puerto del origen. En esta solución se asume que todos los nodos siempre usan la función bind(), y utilizan un único socket para realizar sus operaciones.
-3. Mecanismo de handshake: similar a TCP: 
+3. Mecanismo de handshake: similar a TCP:
 	a)El nodo que inicia la conexión elije un SN al azar (0 u 1), y envía un paquete con este SN y el bit de SYN encendido, todo lo demás apagado.
 	b) El segundo nodo recibe esta conexión, invierte el valor de SN y lo toma como RN, elije un SN al azar (0 u 1), y enciende los bits de SYN y ACK, y envía un paquete con esta información-
 	c) Finalmente el primer nodo recibe este paquete, invierte el SN recibido y lo toma como su SN, toma el RN recibido como su SN, y apaga el bit de SYN, dejando el bit de ACK encendido, y envía este paquete.

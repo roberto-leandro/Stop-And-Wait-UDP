@@ -154,8 +154,17 @@ class EstablishedStatus(State):
             print("Packet contains new data!")
 
             # Put the payload in the processed messages queue
-            # TODO we need more info in this queue to know when the file is finished
-            node.payload_queue.put(packet[utility.HEADER_SIZE:])
+            # First read the header to determine how many bytes are left
+            data_left = packet[0] & utility.HEADER_DATA_LEFT
+            if data_left == utility.HEADER_DATA_LEFT:
+                # Write all the payload
+                node.payload_queue.put(packet[utility.HEADER_SIZE:])
+            else:
+                # Write as many bytes as data_left indicates
+                node.payload_queue.put(packet[utility.HEADER_SIZE:utility.HEADER_SIZE+data_left])
+
+                # Write ASCII end of transmission
+                node.payload_queue.put(0x4)
 
             # Increase rn
             node.increase_current_rn()

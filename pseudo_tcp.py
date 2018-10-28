@@ -11,8 +11,6 @@ class PseudoTCPSocket:
     # TODO the message does not start being sent when send() is called, instead it starts after a timeout
     # TODO log all the prints to a file
     # TODO close mechanism
-    # TODO add data_left to the header of each packet in send()
-    # TODO send title of the file somehow
     # TODO pick a good timeout
     # TODO start a new thread for each incoming connection
         # Probably going to require a dict with each port-ip pair as key and a structure/thread as data
@@ -83,11 +81,11 @@ class PseudoTCPSocket:
             packet, address = self.receive_packet()
 
             # Randomly drop some packets to test the Stop-And-Wait algorithm
-            if random.randint(1, 10) == 1:
-                print("Oops! Dropped a packet...")
+           # if random.randint(1, 10) == 1:
+           #     print("Oops! Dropped a packet...")
 
             # Add the packet to the receive queue only if it was received from the current partner
-            elif self.current_partner is None or address == self.current_partner:
+            if self.current_partner is None or address == self.current_partner:
                 self.receive_queue.put((packet, address), block=True)
 
     def main_loop(self):
@@ -110,20 +108,31 @@ class PseudoTCPSocket:
         bytes_sent = 0
 
         while bytes_sent < len(message):
-            # TODO add data left
-            packet = utility.create_packet(payload=message[bytes_sent:bytes_sent + utility.PAYLOAD_SIZE])
-            self.send_queue.put(packet, block=True)
+            if bytes_sent + utility.PAYLOAD_SIZE > len(message):
+                # For the last packet, data left is the amount of bytes to be read in the payload
+                data_left = len(message) - bytes_sent
+            else:
+                # For all packets except the last one, all data left bits are turned on
+                data_left = utility.HEADER_DATA_LEFT
+
+            packet = utility.create_packet(data_left=data_left,
+                                           payload=message[bytes_sent:bytes_sent + utility.PAYLOAD_SIZE])
+            self.send_queue.put(packet)
             bytes_sent += utility.PAYLOAD_SIZE
 
-    # TODO modify implementation to read the data remaining from the packet's headers
-    def recv(self, size):
+    def recv(self):
         """Read from the processed message queue until data_left is 0"""
-        message = bytearray(size)
+        message = bytearray()
+        current_payload = self.payload_queue.get(block=True)
         received_bytes = 0
         self.current_sn = not self.current_sn
-        while received_bytes < size:
-            message[received_bytes:utility.PAYLOAD_SIZE:] = self.payload_queue.get(block=True)
+        # Read until end of transmission
+        while current_payload != 0x4:
+            message[received_bytes:utility.PAYLOAD_SIZE:] = current_payload
+            current_payload = self.payload_queue.get(block=True)
             received_bytes += utility.PAYLOAD_SIZE
+
+        print("Finished reading a message!")
         return message
 
     def close(self):

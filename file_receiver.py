@@ -6,6 +6,6 @@ node.bind(('localhost', 65001))
 node.accept()
 
 
-message = node.recv(132)
+message = node.recv()
 with open("test_copy.txt", "wb") as binary_file:
     num_bytes_written = binary_file.write(message)
