@@ -14,10 +14,6 @@ class PseudoTCPSocket:
         if address[0] == 'localhost':
             address = ('127.0.0.1', address[1])
 
-        # TODO remove
-        self.times_notified = 0
-        self.times_unblocked = 0
-
         # Logging
         self.log_filename = log_filename
 
@@ -176,9 +172,8 @@ class PseudoTCPSocket:
         packet[1] = self.get_current_rn()
         packet[2] = self.get_current_sn()
 
-        utility.log_message(f"Sending packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet)} and "
-                            f"RN={utility.get_rn(packet)} and ACK={utility.are_flags_set(packet, utility.HEADER_ACK)} to "
-                            f"{self.get_partner()}", self.log_filename, self.log_file_lock)
+        utility.log_message(f"Sending packet {utility.packet_to_string(packet)}  to {self.get_partner()}",
+                            self.log_filename, self.log_file_lock)
 
         self.sock_send_lock.acquire()
         self.sock.sendto(packet, self.get_partner())

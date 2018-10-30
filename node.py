@@ -152,8 +152,9 @@ class Node:
 
             # Randomly drop some packets to test the Stop-And-Wait algorithm
             # TODO uncomment this
-           # if random.randint(1, 10) == 1:
-           #     utility.log_message("Oops! Dropped a packet...", self.log_filename, self.log_file_lock)
+            #if random.randint(1, 10) == 1:
+             #   utility.log_message("Oops! Dropped a packet...", self.log_filename, self.log_file_lock)
+              #  continue
 
             # If a connection is established with this address, send the packet to that connection
             self.connections_lock.acquire()
@@ -210,7 +211,6 @@ class Node:
         packet, address = self.sock.recvfrom(utility.PACKET_SIZE)
         self.sock_read_lock.release()
 
-        utility.log_message(f"Received packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet)} and "
-              f"RN={utility.get_rn(packet)} and ACK={utility.are_flags_set(packet, utility.HEADER_ACK)} "
-              f"from {address}", self.log_filename, self.log_file_lock)
+        utility.log_message(f"Received packet {utility.packet_to_string(packet)} from {address}",
+                            self.log_filename, self.log_file_lock)
         return packet, address

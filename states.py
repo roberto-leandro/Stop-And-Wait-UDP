@@ -7,7 +7,6 @@ In order to handle the different states a connection might have at any given tim
 Each class in this module defines a state that can be held by the PseudoTCP connection, and implements its behavior on
 the event of receiving a packet or a timeout.
 """
-# TODO status classes for close, timeout handling for all statuses except ESTABLISHED
 
 
 class State(ABC):
@@ -94,8 +93,10 @@ class SynReceivedStatus(State):
         print("Message received was a proper ACK, connection established!!")
         # Update current variables: connection is now established
         node.set_current_status(EstablishedStatus())
-        node.set_current_sn(utility.get_rn(packet))
         node.set_current_rn(utility.get_sn(packet))
+
+        # This packet might contain data, as the connection is now established it should be managed as such
+        EstablishedStatus.handle_packet(packet, node)
 
     @staticmethod
     def handle_timeout(node):
@@ -122,17 +123,23 @@ class SynSentStatus(State):
         node.send_queue.task_done()
 
         print("Message received was a proper SYN-ACK, connection established!")
-        # Update current variables: connection is now established, sn and rn should be flipped
+        # Update current variables: connection is now established, sn and rn should be increased
         node.set_current_status(EstablishedStatus())
         node.set_current_sn(utility.get_rn(packet))
         node.set_current_rn(utility.get_sn(packet))
         node.increase_current_rn()
 
-        # Send ACK
-        ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
-        print(f"Sending ACK...")
+        # Send ACK, if data is available include it
+        try:
+            # Get next packet
+            ack_message = payload=node.peek_send_queue()
+            # Turn ack on
+            ack_message[0] = ack_message[0] | utility.HEADER_ACK
+            print(f"Sending ACK with a payload...")
+        except IndexError:
+            ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
+            print(f"Sending ACK without a payload...")
         node.send_packet(ack_message)
-
         # TODO if this ACK is lost, its impossible to establish a connection
 
     @staticmethod
@@ -173,6 +180,8 @@ class EstablishedStatus(State):
             # ACK the sender
             ack_message = utility.create_packet(ack=True, sn=node.get_current_sn(), rn=node.get_current_rn())
             print(f"Sending ACK...")
+
+            # FIXME sending the packet here means the ACK cannot be retransmitted. This is clearly wrong.
             node.send_packet(ack_message)
 
         # Check if packet contains an ACK
@@ -185,9 +194,12 @@ class EstablishedStatus(State):
                 node.send_queue.task_done()
             except queue.Empty:
                 print("Strange, an ACK was received even though the send queue is empty...")
-                return
+                #return
 
-            print(f"Packet contains an ACK, which means the packet {utility.packet_to_string(old_packet)} has been sent"
+            # FIXME
+            #print(f"Packet contains an ACK, which means the packet {utility.packet_to_string(old_packet)} has been sent"
+             #     f" successfully!")
+            print(f"Packet contains an ACK, which means the packet lol has been sent"
                   f" successfully!")
             node.set_current_sn(utility.get_rn(packet))
 
