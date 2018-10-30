@@ -10,3 +10,5 @@ filename = "segundo_mensaje.txt"
 
 file.send_file(filename, node, remote_node)
 file.receive_file(node)
+
+node.close_node()

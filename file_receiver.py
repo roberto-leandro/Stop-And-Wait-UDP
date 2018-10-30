@@ -14,5 +14,3 @@ filename = "first_message.txt"
 file.send_file(filename, node, remote_node)
 filename = file.receive_file(node)
 
-
-#node.close_all()
