@@ -14,6 +14,10 @@ class PseudoTCPSocket:
         if address[0] == 'localhost':
             address = ('127.0.0.1', address[1])
 
+        # TODO remove
+        self.times_notified = 0
+        self.times_unblocked = 0
+
         # Logging
         self.log_filename = log_filename
 
@@ -75,12 +79,14 @@ class PseudoTCPSocket:
         # Set the termination event so all other threads in this sockets can finish
         self.terminate_socket_event.set()
 
+        # Put a message in the payload_queue so message_assembler wakes up
+        self.payload_queue.put(0x5)
+
         # Wait for the threads to finish
         self.message_assembly_thread.join()
 
         # Add this connection's address to the termination queue, so the node may delete the entry
         self.closed_connections_queue.put(self.partner)
-
 
     def main_loop(self):
         """This loop will handle the three main events: receiving data from an upper layer, receiving an ack, or a
@@ -105,30 +111,30 @@ class PseudoTCPSocket:
         message = bytearray()
         received_bytes = 0
         # Read until end of transmission
-        while not self.terminate_socket_event.is_set():
-
-            # FIXME instead of blocking on the queue, this should wait on an event
-            # FIXME the event should be set whenever a message is put on the queue OR the socket should stop
-            # FIXME this avoids busy waiting
+        while True:
             current_payload = None
             try:
-                current_payload = self.payload_queue.get(block=False)
+                current_payload = self.payload_queue.get(block=True)
             except queue.Empty:
-                # FIXME here the socket should be terminated when done right
-                continue
+                # Whether queue was empty or not, a check to self.terminate_socket_event must be performed either way
+                pass
+
+            if self.terminate_socket_event.is_set():
+                break
 
             if current_payload == 0x4:
                 self.payload_queue.task_done()
                 # Message ended, put it in the finished_message_queue and reset variables
-                utility.log_message("Finished reading a message!", self.log_filename, self.log_file_lock)
+                utility.log_message(f"Finished reading the message {message}!", self.log_filename, self.log_file_lock)
                 self.finished_message_queue.put(message, self.partner)
                 message = bytearray()
                 received_bytes = 0
 
-            elif current_payload is not None:
+            elif current_payload != 0x5:
                 # Add the next payload to the message
                 message[received_bytes:utility.PAYLOAD_SIZE:] = current_payload
                 received_bytes += utility.PAYLOAD_SIZE
+
         utility.log_message("Assemble message loop finished!", self.log_filename, self.log_file_lock)
 
     def send(self, message):
@@ -193,7 +199,6 @@ class PseudoTCPSocket:
 
     def increase_current_sn(self):
         self.current_sn_lock.acquire()
-        # TODO parametrisize rn max size
         self.current_sn = 1 + self.current_sn % 255
         utility.log_message(f"Increased current sn to {self.current_sn}", self.log_filename, self.log_file_lock)
         self.current_sn_lock.release()

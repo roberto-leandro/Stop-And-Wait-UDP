@@ -101,6 +101,7 @@ class Node:
         """
         Closes all connections and terminates this node.
         """
+
         self.accepting_connections_lock.acquire()
         self.accepting_connections = False
 
@@ -109,6 +110,9 @@ class Node:
 
         # Set the event for node termination
         self.terminate_node_event.set()
+
+        # Wake the thread that deletes connections from the table
+        self.closed_connections_queue.put(0x5)
 
         # Wait for threads to finish
         self.message_reader.join()
@@ -188,16 +192,18 @@ class Node:
         """
         while not self.terminate_node_event.is_set():
             # Block until a socket is terminated, and delete that entry
-            # FIXME busy waiting
             try:
-                terminated_address = self.closed_connections_queue.get(block=False)
+                terminated_address = self.closed_connections_queue.get(block=True)
             except queue.Empty:
+                continue
+
+            if terminated_address == 0x5:
+                # This message is placed in the queue to wake it up, ignore it
                 continue
             self.connections_lock.acquire()
             del self.connections[terminated_address]
             utility.log_message(f"Closed {terminated_address} successfully!", self.log_filename, self.log_file_lock)
             self.connections_lock.release()
-
 
     def receive_packet(self):
         self.sock_read_lock.acquire()
