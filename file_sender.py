@@ -1,23 +1,12 @@
 from node import Node
+import file
 
 # Establish the connection
 node = Node(("localhost", 65002))
-receiver = ("localhost", 65001)
-node.connect(receiver)
+remote_node = ("localhost", 65001)
+node.connect(remote_node)
 
-FILENAME = "DesicionesDeDiseño.txt"
+filename = "DesicionesDeDiseño.txt"
 
-# Read the file
-with open(FILENAME, "rb") as binary_file:
-    # Read the whole file at once
-    data = binary_file.read()
-
-print(len(data))
-print(data)
-
-# Send the title
-node.send(FILENAME.encode(), receiver)
-
-# Send the contents
-node.send(data, receiver)
-#node.close(receiver)
+file.send_file(filename, node, remote_node)
+file.receive_file(node)

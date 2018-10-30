@@ -11,8 +11,6 @@ class PseudoTCPSocket:
     # TODO log all the prints to a file
     # TODO close mechanism
     # TODO pick a good timeout
-    # TODO start a new thread for each incoming connection
-        # Probably going to require a dict with each port-ip pair as key and a structure/thread as data
     def __init__(self, address, sock, sock_lock, finished_message_queue):
         # Change localhost to 127.0.0.1 from now so the address can be written as the current partner
         if address[0] == 'localhost':

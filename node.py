@@ -66,8 +66,8 @@ class Node:
     def close_all(self):
         print(f"Closing all connections...")
 
-        for connection in self.connections:
-            print(f"Closing {connection.get_partner()}...")
+        for address, connection in self.connections.items():
+            print(f"Closing {address}...")
             connection.close()
 
         # Remove all entries
@@ -86,11 +86,8 @@ class Node:
         # Send the message
         self.connections[address].send(message)
 
-    def recv(self, address):
-        address = utility.resolve_localhost(address)
-
-        print(f"Receiving a message from {address}...")
-        # Lower level sockets assembled the payloads they receive from their partners into a high level message
+    def recv(self):
+        # Lower level sockets assemble the payloads they receive from their partners into a high level message
         # Those messages are placed in the finished_message_queue shared among all connections
         return self.finished_messages_queue.get(block=True)
 

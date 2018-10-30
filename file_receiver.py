@@ -1,21 +1,17 @@
 from node import Node
-
+import file
+import time
 
 # Establish the connection
 node = Node(('localhost', 65001))
 node.set_accepting_connections(True)
 
-sender = ("localhost", 65002)
+time.sleep(5)
 
-# Receive the title
-filename_message = node.recv(sender)
-filename = filename_message.decode("utf-8")
-filename = filename + "_received.txt"  # Avoid name collisions
+remote_node = ("localhost", 65002)
+filename = "DesicionesDeDiseño.txt"
 
-# Receive the contents
-message = node.recv(sender)
+filename = file.receive_file(node)
+file.send_file(filename, node, remote_node)
 
-# Write the contents
-with open(filename, "wb") as binary_file:
-    num_bytes_written = binary_file.write(message)
-    #node.close_all()
+#node.close_all()

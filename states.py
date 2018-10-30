@@ -150,13 +150,13 @@ class EstablishedStatus(State):
         is_valid = False
         # Parse the packet, determine if its valid and if an ACK should be sent
         # Check if packet contains new data
-        if utility.get_sn(packet) == node.get_current_rn():
+        data_left = packet[0] & utility.HEADER_DATA_LEFT
+        if utility.get_sn(packet) == node.get_current_rn() and data_left != 0:
             is_valid = True
             print("Packet contains new data!")
 
             # Put the payload in the processed messages queue
             # First read the header to determine how many bytes are left
-            data_left = packet[0] & utility.HEADER_DATA_LEFT
             if data_left == utility.HEADER_DATA_LEFT:
                 # Write all the payload
                 node.payload_queue.put(packet[utility.HEADER_SIZE:])
