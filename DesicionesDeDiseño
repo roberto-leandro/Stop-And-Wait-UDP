@@ -1,5 +1,0 @@
-1. Estructura del paquete: 3 bits de flags, 5 bits (padding), 7 bytes de payload
-2. Mecanismo de handshake
-3. Timeout
-4. Api?
-5.

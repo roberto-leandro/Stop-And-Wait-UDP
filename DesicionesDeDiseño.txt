@@ -1,0 +1,10 @@
+1. Estructura del paquete: 8 bits de payload, 1 bit de SYN, 1 bit de ACK, 1 bit de FIN, 1 bit de SN, 1 bit de RN, 1 bit de fin de mensaje y 2 bits vacíos.
+2. Dentro del paquete no se envía la dirección y puerto del origen. En esta solución se asume que todos los nodos siempre usan la función bind(), y utilizan un único socket para realizar sus operaciones.
+3. Mecanismo de handshake: similar a TCP:
+	a)El nodo que inicia la conexión elije un SN al azar (0 u 1), y envía un paquete con este SN y el bit de SYN encendido, todo lo demás apagado.
+	b) El segundo nodo recibe esta conexión, invierte el valor de SN y lo toma como RN, elije un SN al azar (0 u 1), y enciende los bits de SYN y ACK, y envía un paquete con esta información-
+	c) Finalmente el primer nodo recibe este paquete, invierte el SN recibido y lo toma como su SN, toma el RN recibido como su SN, y apaga el bit de SYN, dejando el bit de ACK encendido, y envía este paquete.
+4. Como timeout se eligió un tiempo de 5 milisegundos. Al hacer ping entre dos computadoras en la misma red se oservó un RTT máximo de 2ms, por lo que 5ms no debería ocasionar timeouts y aún así es un tiempo bastante pequeño.
+5. Para el control del flujo del programa se utilizan 3 colas: una de mensajes recibios, otra de mensajes procesados y listos para ser leídos y una de mensajes por ser enviados. De esta manera se generaliza la lógica en ambos nodos para conseguir que el enlace sea full dúplex. Basta con tener un hilo que ingrese los paquetes recibidos a la cola de mensajes, y otro que maneja el loop principal, el cuál consiste en atender los siguientes eventos:
+	a) Procesar un mensaje de la cola de mensajes: se determina si contiene un ACK, si es así se actualiza SN. Adicionalmente, si contiene datos se actualiza RN y se ingresan los bytes a la cola de mensajes procesados.
+	b)Timeout: se reenvía el último mensaje para el cual no se ha recibido un ACK.
