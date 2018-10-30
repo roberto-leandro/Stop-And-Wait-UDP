@@ -1,20 +1,23 @@
-from pseudo_tcp import PseudoTCPSocket
+from node import Node
 
 # Establish the connection
-node = PseudoTCPSocket()
-node.bind(("localhost", 65002))
-node.connect(("localhost", 65001))
+node = Node(("localhost", 65002))
+receiver = ("localhost", 65001)
+node.connect(receiver)
 
 FILENAME = "DesicionesDeDiseño.txt"
 
-# Read and send the file
+# Read the file
 with open(FILENAME, "rb") as binary_file:
     # Read the whole file at once
     data = binary_file.read()
-    print(len(data))
-    print(data)
 
-    node.send(FILENAME.encode())
+print(len(data))
+print(data)
 
-    node.send(data)
-    node.close()
+# Send the title
+node.send(FILENAME.encode(), receiver)
+
+# Send the contents
+node.send(data, receiver)
+#node.close(receiver)

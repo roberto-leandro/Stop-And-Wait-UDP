@@ -1,15 +1,21 @@
-from pseudo_tcp import PseudoTCPSocket
+from node import Node
+
 
 # Establish the connection
-node = PseudoTCPSocket()
-node.bind(('localhost', 65001))
-node.accept()
+node = Node(('localhost', 65001))
+node.set_accepting_connections(True)
 
+sender = ("localhost", 65002)
 
-filename_message = node.recv()
+# Receive the title
+filename_message = node.recv(sender)
 filename = filename_message.decode("utf-8")
 filename = filename + "_received.txt"  # Avoid name collisions
-message = node.recv()
+
+# Receive the contents
+message = node.recv(sender)
+
+# Write the contents
 with open(filename, "wb") as binary_file:
     num_bytes_written = binary_file.write(message)
-    node.close()
+    #node.close_all()

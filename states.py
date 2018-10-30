@@ -20,7 +20,7 @@ class State(ABC):
 
     @staticmethod
     @abstractmethod
-    def handle_packet(packet, origin_address, node):
+    def handle_packet(packet, node):
         pass
 
 
@@ -28,7 +28,7 @@ class ClosedStatus(State):
     STATUS_NAME = "CLOSED"
 
     @staticmethod
-    def handle_packet(packet, origin_address, node):
+    def handle_packet(packet, node):
         # Do nothing
         print("No connection is established, doing nothing...")
 
@@ -42,7 +42,7 @@ class AcceptStatus(State):
     STATUS_NAME = "ACCEPT"
 
     @staticmethod
-    def handle_packet(packet, origin_address, node):
+    def handle_packet(packet, node):
         # Check if message contains a valid SYN
         is_syn = utility.are_flags_set(packet, utility.HEADER_SYN) and \
                  utility.are_flags_unset(packet, utility.HEADER_FIN | utility.HEADER_ACK)
@@ -55,7 +55,6 @@ class AcceptStatus(State):
 
         # Set the state variables to synchronize with the partner
         node.set_current_status(SynReceivedStatus())
-        node.set_current_partner(origin_address)
         node.set_current_rn(utility.get_sn(packet))
         node.increase_current_rn()
         node.set_current_sn(random.randint(0, 255))
@@ -78,7 +77,7 @@ class SynReceivedStatus(State):
     STATUS_NAME = "SYN_RECEIVED"
 
     @staticmethod
-    def handle_packet(packet, origin_address, node):
+    def handle_packet(packet, node):
         is_ack = utility.are_flags_set(packet, utility.HEADER_ACK) \
                  and utility.get_sn(packet) == node.get_current_rn() \
                  and utility.get_rn(packet) != node.get_current_sn() \
@@ -109,7 +108,7 @@ class SynSentStatus(State):
     STATUS_NAME = "SYN_SENT"
 
     @staticmethod
-    def handle_packet(packet, origin_address, node):
+    def handle_packet(packet, node):
         is_syn_ack = utility.are_flags_set(packet, utility.HEADER_SYN, utility.HEADER_ACK) \
                      and utility.get_rn(packet) != node.get_current_sn() \
                      and utility.are_flags_unset(packet, utility.HEADER_FIN)
@@ -147,7 +146,7 @@ class EstablishedStatus(State):
     STATUS_NAME = "ESTABLISHED"
 
     @staticmethod
-    def handle_packet(packet, origin_address, node):
+    def handle_packet(packet, node):
         is_valid = False
         # Parse the packet, determine if its valid and if an ACK should be sent
         # Check if packet contains new data
@@ -237,7 +236,7 @@ class CloseSentStatus(State):
     STATUS_NAME = "CLOSE_SENT"
 
     @staticmethod
-    def handle_packet(packet, origin_address, node):
+    def handle_packet(packet, node):
         is_valid_ack = utility.are_flags_set(packet, utility.HEADER_ACK) \
                        and utility.get_rn(packet) != node.get_current_sn() \
                        and utility.are_flags_unset(packet, utility.HEADER_FIN, utility.HEADER_SYN)

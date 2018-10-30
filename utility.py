@@ -57,3 +57,8 @@ def create_packet(syn=False, ack=False, fin=False, sn=0, rn=0, data_left=0, payl
     packet[HEADER_SIZE:] = payload
 
     return packet
+
+def resolve_localhost(address):
+    if address[0] == 'localhost':
+        address = ('127.0.0.1', address[1])
+    return address
