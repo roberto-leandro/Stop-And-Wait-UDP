@@ -8,7 +8,6 @@ import utility
 class PseudoTCPSocket:
 
     # TODO the message does not start being sent when send() is called, instead it starts after a timeout
-    # TODO log all the prints to a file
     # TODO close mechanism
     # TODO pick a good timeout
     def __init__(self, address, sock, sock_lock, finished_message_queue, log_filename, log_file_lock):
