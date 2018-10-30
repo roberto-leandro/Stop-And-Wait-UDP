@@ -11,14 +11,17 @@ class PseudoTCPSocket:
     # TODO log all the prints to a file
     # TODO close mechanism
     # TODO pick a good timeout
-    def __init__(self, address, sock, sock_lock, finished_message_queue):
+    def __init__(self, address, sock, sock_lock, finished_message_queue, log_filename, log_file_lock):
         # Change localhost to 127.0.0.1 from now so the address can be written as the current partner
         if address[0] == 'localhost':
             address = ('127.0.0.1', address[1])
 
+        # Logging
+        self.log_filename = log_filename
+
         # Socket
         self.sock = sock
-        
+
         # State variables
         self.current_status = states.ClosedStatus()
         self.current_sn = 0
@@ -40,6 +43,7 @@ class PseudoTCPSocket:
         self.current_status_lock = threading.Lock()
         self.current_sn_lock = threading.Lock()
         self.current_rn_lock = threading.Lock()
+        self.log_file_lock = log_file_lock
 
         # Threads
         self.main_thread = threading.Thread(target=self.main_loop)
@@ -47,14 +51,16 @@ class PseudoTCPSocket:
         self.message_assembler = threading.Thread(target=self.assemble_message_loop)
         self.message_assembler.start()
 
+        utility.log_message(f"Socket for {address} has been started!")
+
     def initiate_connection(self):
-        print(f"Trying to connect to {self.partner}...")
+        utility.log_message(f"Trying to connect to {self.partner}...", self.log_filename, self.log_file_lock)
 
         # Build the SYN message, choosing a random value for sn
         self.set_current_sn(random.randint(0, 255))
         syn_message = utility.create_packet(syn=True, sn=self.get_current_sn())
         # Send SYN
-        print(f"Sending SYN...")
+        utility.log_message(f"Sending SYN...", self.log_filename, self.log_file_lock)
         self.send_packet(syn_message)
         self.set_current_status(states.SynSentStatus())
 
@@ -70,13 +76,13 @@ class PseudoTCPSocket:
                 packet = self.receive_queue.get(block=True, timeout=utility.TIMEOUT)
             except queue.Empty:
                 # Timed out waiting for a packet
-                print(f"Timeout! Handling with current status {self.get_current_status().STATUS_NAME}")
+                utility.log_message(f"Timeout! Handling with current status {self.get_current_status().STATUS_NAME}", self.log_filename, self.log_file_lock)
                 self.get_current_status().handle_timeout(self)
                 continue
 
-            print(f"Handling packet with current status {self.get_current_status().STATUS_NAME}")
+            utility.log_message(f"Handling packet with current status {self.get_current_status().STATUS_NAME}", self.log_filename, self.log_file_lock)
             self.get_current_status().handle_packet(packet=packet, node=self)
-        print("Stopped main loop")
+        utility.log_message("Stopped main loop", self.log_filename, self.log_file_lock)
 
     def assemble_message_loop(self):
         """Assemble the payload fragments into a message, and send it to upper layer"""
@@ -88,7 +94,7 @@ class PseudoTCPSocket:
 
             if current_payload == 0x4:
                 # Message ended, put it in the finished_message_queue and reset variables
-                print("Finished reading a message!")
+                utility.log_message("Finished reading a message!", self.log_filename, self.log_file_lock)
                 self.finished_message_queue.put(message, self.partner)
                 message = bytearray()
                 received_bytes = 0
@@ -134,9 +140,9 @@ class PseudoTCPSocket:
         packet[1] = self.get_current_rn()
         packet[2] = self.get_current_sn()
 
-        print(f"Sending packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet)} and "
-              f"RN={utility.get_rn(packet)} and ACK={utility.are_flags_set(packet, utility.HEADER_ACK)} to "
-              f"{self.get_partner()}")
+        utility.log_message(f"Sending packet {utility.packet_to_string(packet)} with SN={utility.get_sn(packet)} and "
+                            f"RN={utility.get_rn(packet)} and ACK={utility.are_flags_set(packet, utility.HEADER_ACK)} to "
+                            f"{self.get_partner()}", self.log_filename, self.log_file_lock)
 
         self.sock_send_lock.acquire()
         self.sock.sendto(packet, self.get_partner())
@@ -148,18 +154,18 @@ class PseudoTCPSocket:
         sn = self.current_sn
         self.current_sn_lock.release()
         return sn
-    
+
     def set_current_sn(self, sn):
         self.current_sn_lock.acquire()
         self.current_sn = sn
         self.current_sn_lock.release()
-        print(f"Set current sn to {sn}")
+        utility.log_message(f"Set current sn to {sn}", self.log_filename, self.log_file_lock)
 
     def increase_current_sn(self):
         self.current_sn_lock.acquire()
         # TODO parametrisize rn max size
         self.current_sn = 1 + self.current_sn % 255
-        print(f"Increased current sn to {self.current_sn}")
+        utility.log_message(f"Increased current sn to {self.current_sn}", self.log_filename, self.log_file_lock)
         self.current_sn_lock.release()
 
     def get_current_rn(self):
@@ -168,17 +174,17 @@ class PseudoTCPSocket:
         rn = self.current_rn
         self.current_rn_lock.release()
         return rn
-    
+
     def set_current_rn(self, rn):
         self.current_rn_lock.acquire()
         self.current_rn = rn
         self.current_rn_lock.release()
-        print(f"Set current rn to {rn}")
+        utility.log_message(f"Set current rn to {rn}", self.log_filename, self.log_file_lock)
 
     def increase_current_rn(self):
         self.current_rn_lock.acquire()
         self.current_rn = 1 + self.current_rn % 255
-        print(f"Increased current rn to {self.current_rn}")
+        utility.log_message(f"Increased current rn to {self.current_rn}", self.log_filename, self.log_file_lock)
         self.current_rn_lock.release()
 
     def get_partner(self):

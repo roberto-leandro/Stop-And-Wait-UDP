@@ -58,7 +58,16 @@ def create_packet(syn=False, ack=False, fin=False, sn=0, rn=0, data_left=0, payl
 
     return packet
 
+
 def resolve_localhost(address):
     if address[0] == 'localhost':
         address = ('127.0.0.1', address[1])
     return address
+
+
+def log_message(message, log_filename, lock):
+    lock.acquire()
+    with open(log_filename, "a+") as log_file:
+        log_file.write(message+"\n")
+    print(message)
+    lock.release()
