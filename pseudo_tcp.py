@@ -9,7 +9,8 @@ class PseudoTCPSocket:
 
     # TODO the message does not start being sent when send() is called, instead it starts after a timeout
     # TODO pick a good timeout
-    def __init__(self, address, sock, sock_lock, finished_message_queue, closed_connections_queue, log_filename, log_file_lock):
+    def __init__(self, address, sock, sock_lock, finished_message_queue, closed_connections_queue,
+                 notify_close_connections_loop, log_filename, log_file_lock):
         # Change localhost to 127.0.0.1 from now so the address can be written as the current partner
         if address[0] == 'localhost':
             address = ('127.0.0.1', address[1])
@@ -31,6 +32,8 @@ class PseudoTCPSocket:
         self.receive_queue = queue.Queue()
         self.payload_queue = queue.Queue()
 
+        self.last_sent_packet = None  # In case it needs to be retransmitted
+
         # Queues shared among all connection
         self.finished_message_queue = finished_message_queue
         self.closed_connections_queue = closed_connections_queue
@@ -41,13 +44,20 @@ class PseudoTCPSocket:
         self.current_status_lock = threading.Lock()
         self.current_sn_lock = threading.Lock()
         self.current_rn_lock = threading.Lock()
+        self.last_sent_packet_lock = threading.Lock()
+        self.current_timeouts_lock = threading.Lock()
 
-        # Locks shared among all connection
+        # Locks shared among all connections
+        self.notify_close_connections_loop = notify_close_connections_loop
         self.sock_send_lock = sock_lock
         self.log_file_lock = log_file_lock
 
         # Events
         self.terminate_socket_event = threading.Event()
+        self.start_transmission_event = threading.Event()
+
+        # Used to determine if the connection should be terminated because partner died
+        self.current_timeouts = 0
 
         # Threads
         self.handler_thread = threading.Thread(target=self.main_loop)
@@ -68,10 +78,7 @@ class PseudoTCPSocket:
         self.send_packet(syn_message)
         self.set_current_status(states.SynSentStatus())
 
-        # Send SYN is the send_queue, as it might need to be resent if the packet is lost
-        self.send_queue.put(syn_message)
-
-    def terminate_socket(self):
+    def terminate_socket(self, notify_connections_remover):
         # Set the termination event so all other threads in this sockets can finish
         self.terminate_socket_event.set()
 
@@ -81,8 +88,12 @@ class PseudoTCPSocket:
         # Wait for the threads to finish
         self.message_assembly_thread.join()
 
-        # Add this connection's address to the termination queue, so the node may delete the entry
-        self.closed_connections_queue.put(self.partner)
+        # If necessary, add this connection to the remover's queue, so it may be deleted from the node
+        if notify_connections_remover:
+            self.closed_connections_queue.put(self.partner)
+            self.notify_close_connections_loop.acquire()
+            self.notify_close_connections_loop.notify()
+            self.notify_close_connections_loop.release()
 
     def main_loop(self):
         """This loop will handle the three main events: receiving data from an upper layer, receiving an ack, or a
@@ -91,15 +102,26 @@ class PseudoTCPSocket:
             try:
                 # This call blocks until an element is available
                 packet = self.receive_queue.get(block=True, timeout=utility.TIMEOUT)
+                self.set_current_timeouts(0)  # Clear current timeouts as a packet was received
                 self.receive_queue.task_done()
             except queue.Empty:
                 # Timed out waiting for a packet
+                # Check if connection should be terminated
+                if utility.MAX_TIMEOUTS != 0 and self.get_current_timeouts() >= utility.MAX_TIMEOUTS:
+                    # Kill connection
+                    print("Timeout! Max timeouts exceeded, terminating socket...")
+                    self.terminate_socket(notify_connections_remover=True)
+                    break
+
+                self.increase_current_timeouts()
+
                 utility.log_message(f"Timeout! Handling with current status {self.get_current_status().STATUS_NAME}", self.log_filename, self.log_file_lock)
                 self.get_current_status().handle_timeout(self)
                 continue
 
             utility.log_message(f"Handling received packet with current status {self.get_current_status().STATUS_NAME}", self.log_filename, self.log_file_lock)
             self.get_current_status().handle_packet(packet=packet, node=self)
+
         utility.log_message("Main loop finished!", self.log_filename, self.log_file_lock)
 
     def assemble_message_loop(self):
@@ -121,7 +143,7 @@ class PseudoTCPSocket:
             if current_payload == 0x4:
                 self.payload_queue.task_done()
                 # Message ended, put it in the finished_message_queue and reset variables
-                utility.log_message(f"Finished reading the message {message}!", self.log_filename, self.log_file_lock)
+                utility.log_message(f"Finished reading the message {str(message)}!", self.log_filename, self.log_file_lock)
                 self.finished_message_queue.put(message, self.partner)
                 message = bytearray()
                 received_bytes = 0
@@ -177,6 +199,7 @@ class PseudoTCPSocket:
 
         self.sock_send_lock.acquire()
         self.sock.sendto(packet, self.get_partner())
+        self.set_last_sent_packet(packet)
         self.sock_send_lock.release()
 
     def get_current_sn(self):
@@ -216,6 +239,33 @@ class PseudoTCPSocket:
         self.current_rn = 1 + self.current_rn % 255
         utility.log_message(f"Increased current rn to {self.current_rn}", self.log_filename, self.log_file_lock)
         self.current_rn_lock.release()
+
+    def set_last_sent_packet(self, packet):
+        self.last_sent_packet_lock.acquire()
+        self.last_sent_packet = packet
+        self.last_sent_packet_lock.release()
+
+    def get_last_sent_packet(self):
+        self.last_sent_packet_lock.acquire()
+        packet = self.last_sent_packet
+        self.last_sent_packet_lock.release()
+        return packet
+
+    def set_current_timeouts(self, timeouts):
+        self.current_timeouts_lock.acquire()
+        self.current_timeouts = timeouts
+        self.current_timeouts_lock.release()
+
+    def get_current_timeouts(self):
+        self.current_timeouts_lock.acquire()
+        timeouts = self.current_timeouts
+        self.current_timeouts_lock.release()
+        return timeouts
+
+    def increase_current_timeouts(self):
+        self.current_timeouts_lock.acquire()
+        self.current_timeouts += 1
+        self.current_timeouts_lock.release()
 
     def get_partner(self):
         return self.partner

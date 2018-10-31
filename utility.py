@@ -1,7 +1,9 @@
 HEADER_SIZE = 3
 PAYLOAD_SIZE = 30
 PACKET_SIZE = HEADER_SIZE + PAYLOAD_SIZE
+# TODO put good values here before handing in
 TIMEOUT = 5
+MAX_TIMEOUTS = 0
 HEADER_SYN =       0b00000000000000000000000010000000
 HEADER_ACK =       0b00000000000000000000000001000000
 HEADER_FIN =       0b00000000000000000000000000100000
@@ -14,7 +16,7 @@ def packet_to_string(packet):
     return f"SN={get_sn(packet)}, RN={get_rn(packet)}, SYN={are_flags_set(packet, HEADER_SYN)}, " \
            f"ACK={are_flags_set(packet, HEADER_ACK)}, FIN={are_flags_set(packet, HEADER_FIN)}, " \
            f"data_left={packet[0] & HEADER_DATA_LEFT}, " \
-           f"payload={bin(int.from_bytes(packet, byteorder='little', signed=False))}"
+           f"payload={str(packet[HEADER_SIZE:])}"
 
 
 def are_flags_set(packet, *flags):
