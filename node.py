@@ -58,7 +58,7 @@ class Node:
         if address not in self.connections:
             # Allocate resources for this new connection
             new_connection = PseudoTCPSocket(address, self.sock, self.sock_send_lock, self.finished_messages_queue,
-                                             self.notify_close_connections_loop, self.closed_connections_queue,
+                                             self.closed_connections_queue, self.notify_close_connections_loop,
                                              self.log_filename, self.log_file_lock)
             new_connection.initiate_connection()
             self.connections[address] = new_connection
@@ -172,10 +172,9 @@ class Node:
                 continue
 
             # Randomly drop some packets to test the Stop-And-Wait algorithm
-            # TODO uncomment this
-            #if random.randint(1, 10) == 1:
-            #    utility.log_message("Oops! Dropped a packet...", self.log_filename, self.log_file_lock)
-            #    continue
+            if random.randint(1, 10) == 1:
+                utility.log_message("Oops! Dropped a packet...", self.log_filename, self.log_file_lock)
+                continue
 
             # If a connection is established with this address, send the packet to that connection
             self.connections_lock.acquire()

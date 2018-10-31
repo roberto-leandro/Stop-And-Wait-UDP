@@ -142,7 +142,7 @@ class SynSentStatus(State):
     @staticmethod
     def handle_timeout(pseudo_sock):
         # Resend SYN, should be the next message in the send queue
-        utility.log_message("Resending SYN...")
+        utility.log_message("Resending SYN...", pseudo_sock.log_filename, pseudo_sock.log_file_lock)
         last_sent_packet = pseudo_sock.get_last_sent_packet()
         if last_sent_packet is not None:
             pseudo_sock.send_packet(last_sent_packet)

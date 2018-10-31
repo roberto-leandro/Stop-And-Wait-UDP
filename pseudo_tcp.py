@@ -7,7 +7,6 @@ import utility
 
 class PseudoTCPSocket:
 
-    # TODO the message does not start being sent when send() is called, instead it starts after a timeout
     def __init__(self, address, sock, sock_lock, finished_message_queue, closed_connections_queue,
                  notify_close_connections_loop, log_filename, log_file_lock):
         # Change localhost to 127.0.0.1 from now so the address can be written as the current partner
@@ -109,7 +108,8 @@ class PseudoTCPSocket:
                 if utility.MAX_TIMEOUTS != 0 and self.get_current_timeouts() >= utility.MAX_TIMEOUTS:
                     # Kill connection
                     utility.log_message("Timeout! Max timeouts exceeded, terminating socket...",self.log_filename, self.log_file_lock)
-                    self.terminate_socket(notify_connections_remover=True)
+                    # Notify the connection remover in node only if the socket is not being shutdown already
+                    self.terminate_socket(notify_connections_remover=self.get_current_status().STATUS_NAME != "SYN_SENT")
                     break
 
                 self.increase_current_timeouts()
